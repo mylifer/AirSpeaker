@@ -1,16 +1,15 @@
-// AirSpeaker — iPad alıcısı (Swift Playgrounds, tek dosya)
+// AirSpeaker — iPad alıcısı (Swift Playgrounds "Uygulama" projesi, tek dosya)
 //
 // Mac'teki AirSpeaker menü çubuğu uygulamasının UDP ile yayınladığı sesi alır
 // ve AVAudioEngine + AVAudioPlayerNode ile çalar.
 //
 // KULLANIM
-// 1. iPad'de Swift Playgrounds'u açın, "+" ile yeni bir *Kitap* (Book) oluşturun
-//    ("Uygulama" değil), sayfadaki kodun tamamını silip bu dosyayı yapıştırın.
-// 2. ÖNEMLİ: "Sonuçları Etkinleştir" (Enable Results) seçeneğini KAPATIN.
-//    Açıkken her satırın sonucu kaydedilir; gerçek zamanlı ses takılır.
-// 3. "Kodumu Çalıştır". Yerel ağ izni sorulursa "İzin Ver" deyin.
-//    Kitap kodu uygulama uzantısı olarak çalıştığından ekranın kararmasını
-//    koddan engelleyemeyiz; uzun dinlemelerde Ayarlar › Ekran ve Parlaklık ›
+// 1. iPad'de Swift Playgrounds'u açın, "+" ile yeni bir *Uygulama* (App) oluşturun.
+// 2. Soldaki dosya listesinde "MyApp" (Uygulamam) dosyasını açın, içindeki her
+//    şeyi silip bu dosyanın tamamını yapıştırın. "ContentView" dosyasına
+//    dokunmanıza gerek yok; kullanılmaz.
+// 3. Uygulamayı çalıştırın (▶). Yerel ağ izni sorulursa "İzin Ver" deyin.
+//    Uzun dinlemelerde ekran kararmasın diye Ayarlar › Ekran ve Parlaklık ›
 //    Otomatik Kilit'i "Hiçbir Zaman" yapın.
 // 4. Ekranda görünen IP adresini Mac'teki AirSpeaker menüsüne girin (port 5000)
 //    ve "Yayını Başlat"a basın.
@@ -21,9 +20,19 @@
 import AVFoundation
 import Network
 import SwiftUI
-#if canImport(PlaygroundSupport)
-import PlaygroundSupport
-#endif
+
+// MARK: - Uygulama
+
+@main
+struct AirSpeakerReceiverApp: App {
+    @StateObject private var model = ReceiverViewModel()
+
+    var body: some Scene {
+        WindowGroup {
+            ReceiverView(model: model)
+        }
+    }
+}
 
 // MARK: - Paket biçimi (Mac ile aynı)
 
@@ -532,19 +541,21 @@ enum NetworkInfo {
 
 // MARK: - Arayüz
 
+@MainActor
 final class ReceiverViewModel: ObservableObject {
     @Published private(set) var snapshot = AirSpeakerReceiver.Snapshot()
     @Published private(set) var ipAddress: String?
     @Published private(set) var level: Float = 0
 
-    let receiver: AirSpeakerReceiver
+    let receiver = AirSpeakerReceiver(port: 5000)
     private let pathMonitor = NWPathMonitor()
 
-    init(receiver: AirSpeakerReceiver) {
-        self.receiver = receiver
+    init() {
+        receiver.start()
         ipAddress = NetworkInfo.localIPAddress()
+        // Wi-Fi değiştiğinde gösterilen IP adresini güncelle.
         pathMonitor.pathUpdateHandler = { [weak self] _ in
-            DispatchQueue.main.async { self?.ipAddress = NetworkInfo.localIPAddress() }
+            Task { @MainActor in self?.ipAddress = NetworkInfo.localIPAddress() }
         }
         pathMonitor.start(queue: .main)
     }
@@ -740,13 +751,3 @@ struct StatsRow: View {
         .background(.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
     }
 }
-
-// MARK: - Başlat
-
-let receiver = AirSpeakerReceiver(port: 5000)
-receiver.start()
-let viewModel = ReceiverViewModel(receiver: receiver)
-
-#if canImport(PlaygroundSupport)
-PlaygroundPage.current.setLiveView(ReceiverView(model: viewModel))
-#endif
