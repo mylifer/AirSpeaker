@@ -595,8 +595,9 @@ enum NetworkInfo {
 
 // MARK: - Arayüz
 
-@MainActor
-final class ReceiverViewModel: ObservableObject {
+// Yayınlanan özellikler yalnızca ana iş parçacığında değiştirilir (refresh,
+// ana kuyruğa gönderilen IP güncellemesi).
+final class ReceiverViewModel: ObservableObject, @unchecked Sendable {
     @Published private(set) var snapshot = AirSpeakerReceiver.Snapshot()
     @Published private(set) var ipAddress: String?
     @Published private(set) var level: Float = 0
@@ -609,7 +610,7 @@ final class ReceiverViewModel: ObservableObject {
         ipAddress = NetworkInfo.localIPAddress()
         // Wi-Fi değiştiğinde gösterilen IP adresini güncelle.
         pathMonitor.pathUpdateHandler = { [weak self] _ in
-            Task { @MainActor in self?.ipAddress = NetworkInfo.localIPAddress() }
+            DispatchQueue.main.async { self?.ipAddress = NetworkInfo.localIPAddress() }
         }
         pathMonitor.start(queue: .main)
     }
