@@ -53,6 +53,8 @@ final class AppModel: ObservableObject {
 
     private let engine = AirSpeakerEngine()
     private let sender = UDPAudioSender()
+    /// Yayın sürerken App Nap'i engelleyen etkinlik belirteci.
+    private var broadcastActivity: NSObjectProtocol?
     /// Son gönderim hatası bu süreden yeniyse gösterge kırmızı olur.
     private let recentErrorWindow: TimeInterval = 2
 
@@ -99,12 +101,24 @@ final class AppModel: ObservableObject {
         sender.start(host: trimmedHost, port: port)
         engine.setSink(sender)
         isBroadcasting = true
+        // Menü çubuğu uygulaması görünür penceresi olmadığı ve kendisi ses
+        // çalmadığı için macOS onu App Nap ile yavaşlatabilir: 5 ms'lik okuma
+        // zamanlayıcısı toplu ve geç çalışır, paketler iPad'e öbek öbek gider
+        // (cızırtı / kesilme). Yayın boyunca gecikmeye duyarlı etkinlik bildir.
+        if broadcastActivity == nil {
+            broadcastActivity = ProcessInfo.processInfo.beginActivity(
+                options: [.userInitiated, .latencyCritical], reason: "iPad'e ses yayını")
+        }
     }
 
     func stopBroadcast() {
         engine.setSink(nil)
         sender.stop()
         isBroadcasting = false
+        if let broadcastActivity {
+            ProcessInfo.processInfo.endActivity(broadcastActivity)
+            self.broadcastActivity = nil
+        }
         senderStats = UDPAudioSender.Stats()
     }
 

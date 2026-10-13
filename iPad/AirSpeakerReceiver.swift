@@ -106,7 +106,7 @@ extension Array where Element == UInt8 {
 ///
 /// Titreşim tamponu, oynatıcıya sıraya alınmış paket sayısıyla ölçülür
 /// (1 paket = 256 kare ≈ 48 kHz'de 5,3 ms):
-/// - Başlangıçta `targetDepth` kadar paket birikince çalmaya başlar (≈ 32 ms).
+/// - Başlangıçta `targetDepth` kadar paket birikince çalmaya başlar (≈ 43 ms).
 /// - Tampon boşalırsa (çatlama) hedef iki paket büyür ve yeniden doldurulur.
 /// - Uzun süre çatlama olmazsa hedef yavaşça küçülür; gecikme yeniden azalır.
 /// - Kuyruk uzun süre hedefin belirgin üstünde kalırsa (saat kayması) arada
@@ -138,9 +138,9 @@ final class AirSpeakerReceiver: @unchecked Sendable {
 
     // Titreşim tamponu ayarları (paket cinsinden; 1 paket ≈ 5,3 ms).
     // Cızırtı varsa initialDepth/minDepth'i büyütün; gecikme fazlaysa küçültün.
-    private let initialDepth = 6
-    private let minDepth = 4
-    private let maxDepth = 32
+    private let initialDepth = 8
+    private let minDepth = 6
+    private let maxDepth = 40
     private let maxConcealedGap: UInt32 = 8
     // Bundan daha geç gelen paketler atılır (saniye).
     private let maxLateness: TimeInterval = 0.2

@@ -75,7 +75,7 @@ sudo "/Library/Application Support/AirSpeaker/uninstall.sh"
    düğmeyle paneli açın. Ekrandaki IP adresini Mac'teki menüye girip yayını
    başlatın.
 
-Alıcı, yaklaşık 32 ms ile başlayan ve çatlama olursa büyüyen, ağ sakinken
+Alıcı, yaklaşık 43 ms ile başlayan ve çatlama olursa büyüyen, ağ sakinken
 yeniden küçülen bir titreşim tamponu kullanır; 200 ms'den geç gelen paketleri
 atarak gecikmenin birikmesini önler. Ekranda tampon, kayıp paket ve
 çatlama sayıları görünür.
