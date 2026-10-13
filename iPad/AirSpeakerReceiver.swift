@@ -17,6 +17,7 @@
 // Paket biçimi Mac tarafındaki App/Sources/AirSpeakerKit/AudioPacket.swift ile
 // aynıdır; birinde değişiklik yaparsanız diğerini de güncelleyin.
 
+import Accelerate
 import AVFoundation
 import Network
 import SwiftUI
@@ -114,11 +115,16 @@ extension Array where Element == UInt8 {
 ///
 /// Titreşim tamponu, oynatıcıya sıraya alınmış paket sayısıyla ölçülür
 /// (1 paket = 256 kare ≈ 48 kHz'de 5,3 ms):
-/// - Başlangıçta `targetDepth` kadar paket birikince çalmaya başlar (≈ 21 ms).
-/// - Tampon boşalırsa (çatlama) hedef bir paket büyür ve yeniden doldurulur.
+/// - Başlangıçta `targetDepth` kadar paket birikince çalmaya başlar (≈ 32 ms).
+/// - Tampon boşalırsa (çatlama) hedef iki paket büyür ve yeniden doldurulur.
 /// - Uzun süre çatlama olmazsa hedef yavaşça küçülür; gecikme yeniden azalır.
-/// - Kuyruk sürekli hedefin üstündeyse (saat kayması, ağ patlaması) arada bir
-///   paket atlanarak gecikmenin birikmesi önlenir.
+/// - Kuyruk uzun süre hedefin belirgin üstünde kalırsa (saat kayması) arada
+///   bir paket atlanarak gecikmenin birikmesi önlenir.
+///
+/// Ayrıca her paketin akıştaki konumu (frameIndex) ile varış zamanı
+/// karşılaştırılır: en hızlı gelen paketlere göre `maxLateness`'tan fazla geç
+/// kalan paketler atılır. Böylece ağ tıkanır ya da iPad bir an geride kalırsa
+/// eski ses birikip gecikmeyi büyütmez; alıcı hemen canlı sese döner.
 final class AirSpeakerReceiver: @unchecked Sendable {
     struct Snapshot: Equatable {
         var listening = false
@@ -130,6 +136,7 @@ final class AirSpeakerReceiver: @unchecked Sendable {
         var lostPackets: UInt64 = 0
         var latePackets: UInt64 = 0
         var trimmedPackets: UInt64 = 0
+        var stalePackets: UInt64 = 0
         var underruns: UInt64 = 0
         var bufferMs: Double = 0
         var targetMs: Double = 0
@@ -138,11 +145,14 @@ final class AirSpeakerReceiver: @unchecked Sendable {
 
     let port: UInt16
 
-    // Titreşim tamponu ayarları (paket cinsinden).
-    private let initialDepth = 4
-    private let minDepth = 2
-    private let maxDepth = 24
+    // Titreşim tamponu ayarları (paket cinsinden; 1 paket ≈ 5,3 ms).
+    // Cızırtı varsa initialDepth/minDepth'i büyütün; gecikme fazlaysa küçültün.
+    private let initialDepth = 6
+    private let minDepth = 4
+    private let maxDepth = 32
     private let maxConcealedGap: UInt32 = 8
+    // Bundan daha geç gelen paketler atılır (saniye).
+    private let maxLateness: TimeInterval = 0.2
 
     // Ağ ve ses işleri bu seri kuyrukta yapılır.
     private let queue = DispatchQueue(label: "airspeaker.receiver", qos: .userInteractive)
@@ -164,6 +174,12 @@ final class AirSpeakerReceiver: @unchecked Sendable {
     private var windowStartUptime: TimeInterval = 0
     private var windowMinimum = Int.max
     private var lastPacketFrames = 256
+
+    // Varış zamanlaması: (varış zamanı - akış zamanı) farkının kayan minimumu.
+    private var timingSampleRate: UInt32 = 0
+    private var timingWindowStart: TimeInterval = 0
+    private var timingWindowMinimum = Double.infinity
+    private var timingBaseline = Double.infinity
 
     // Arayüzün okuduğu istatistikler; kilitle korunur.
     private let lock = NSLock()
@@ -286,6 +302,14 @@ final class AirSpeakerReceiver: @unchecked Sendable {
         }
         expectedSequence = header.sequence &+ 1
 
+        if isStale(header, now: now) {
+            lock.lock()
+            lastPacketUptime = now
+            stats.stalePackets += 1
+            lock.unlock()
+            return
+        }
+
         guard let format = ensureEngine(sampleRate: Double(header.sampleRate)) else { return }
 
         // Birkaç paketlik kaybı sessizlikle doldur; zamanlama kaymasın.
@@ -316,6 +340,37 @@ final class AirSpeakerReceiver: @unchecked Sendable {
         lock.unlock()
     }
 
+    /// Paket, akıştaki konumuna göre beklenenden çok geç mi geldi?
+    private func isStale(_ header: AudioPacketHeader, now: TimeInterval) -> Bool {
+        guard header.sampleRate > 0 else { return false }
+        lock.lock()
+        let silenceGap = now - lastPacketUptime
+        lock.unlock()
+        // Akış durup yeniden başladıysa (Mac'te ses kesildi) ya da örnekleme hızı
+        // değiştiyse akış zamanı ile saat arasındaki ilişki değişmiştir: sıfırla.
+        if silenceGap > 0.3 || header.sampleRate != timingSampleRate {
+            resetTiming(now: now)
+            timingSampleRate = header.sampleRate
+        }
+
+        let offset = now - Double(header.frameIndex) / Double(header.sampleRate)
+        timingWindowMinimum = min(timingWindowMinimum, offset)
+        if now - timingWindowStart >= 5 {
+            // Kayan pencere: saat kayması zamanla taban değeri kaydırır.
+            timingBaseline = timingWindowMinimum
+            timingWindowMinimum = offset
+            timingWindowStart = now
+        }
+        let reference = min(timingBaseline, timingWindowMinimum)
+        return offset - reference > maxLateness
+    }
+
+    private func resetTiming(now: TimeInterval) {
+        timingWindowStart = now
+        timingWindowMinimum = .infinity
+        timingBaseline = .infinity
+    }
+
     private func makeBuffer(from packet: Data, header: AudioPacketHeader,
                             format: AVAudioFormat) -> (AVAudioPCMBuffer, Float)? {
         let frames = Int(header.frameCount)
@@ -326,21 +381,26 @@ final class AirSpeakerReceiver: @unchecked Sendable {
         let left = channels[0]
         let right = channels[1]
         let sourceChannels = Int(header.channelCount)
-        let bytesPerFrame = sourceChannels * 2
+        let count = vDSP_Length(frames)
         var peak: Float = 0
 
+        // Accelerate (vDSP) ile toplu dönüşüm: Swift Playgrounds kodu
+        // iyileştirmesiz derlediği için örnek örnek döngüden çok daha hızlıdır.
+        // Int16 (interleaved, little-endian) -> Float32 (ayrık kanallar).
         packet.withUnsafeBytes { (raw: UnsafeRawBufferPointer) in
-            func sample(at offset: Int) -> Float {
-                Float(Int16(bitPattern: UInt16(raw[offset]) | UInt16(raw[offset + 1]) << 8)) / 32768
-            }
-            for frame in 0..<frames {
-                let offset = AudioPacketHeader.size + frame * bytesPerFrame
-                let l = sample(at: offset)
-                let r = sourceChannels > 1 ? sample(at: offset + 2) : l
-                left[frame] = l
-                right[frame] = r
-                peak = max(peak, abs(l), abs(r))
-            }
+            guard let base = raw.baseAddress else { return }
+            let pcm = (base + AudioPacketHeader.size).assumingMemoryBound(to: Int16.self)
+            let stride = vDSP_Stride(sourceChannels)
+            vDSP_vflt16(pcm, stride, left, 1, count)
+            vDSP_vflt16(sourceChannels > 1 ? pcm + 1 : pcm, stride, right, 1, count)
+            var scale: Float = 1.0 / 32768
+            vDSP_vsmul(left, 1, &scale, left, 1, count)
+            vDSP_vsmul(right, 1, &scale, right, 1, count)
+            var leftPeak: Float = 0
+            var rightPeak: Float = 0
+            vDSP_maxmgv(left, 1, &leftPeak, count)
+            vDSP_maxmgv(right, 1, &rightPeak, count)
+            peak = max(leftPeak, rightPeak)
         }
         return (buffer, peak)
     }
@@ -380,14 +440,15 @@ final class AirSpeakerReceiver: @unchecked Sendable {
             return
         }
 
-        // Kuyruğun son 2 sn'deki en düşük seviyesi hedefin üstündeyse gereksiz
-        // gecikme var: bir paket atla. Uzun süredir çatlama yoksa hedefi küçült.
+        // Kuyruğun son 4 sn'deki en düşük seviyesi hedefin belirgin üstündeyse
+        // gereksiz gecikme var: bir paket atla. Uzun süredir çatlama yoksa
+        // hedefi küçült.
         windowMinimum = min(windowMinimum, scheduledCount)
-        if now - windowStartUptime >= 2 {
-            let excess = windowMinimum > targetDepth
+        if now - windowStartUptime >= 4 {
+            let excess = windowMinimum > targetDepth + 2
             windowStartUptime = now
             windowMinimum = Int.max
-            if now - lastUnderrunUptime > 20 && targetDepth > minDepth {
+            if now - lastUnderrunUptime > 30 && targetDepth > minDepth {
                 targetDepth -= 1
                 lastUnderrunUptime = now
             }
@@ -421,7 +482,7 @@ final class AirSpeakerReceiver: @unchecked Sendable {
         let streamActive = now - lastPacketUptime < 0.1
         lock.unlock()
         if streamActive {
-            targetDepth = min(targetDepth + 1, maxDepth)
+            targetDepth = min(targetDepth + 2, maxDepth)
             lastUnderrunUptime = now
             updateStats { $0.underruns += 1 }
         }
@@ -433,6 +494,8 @@ final class AirSpeakerReceiver: @unchecked Sendable {
         prebuffer.removeAll()
         isPrimed = false
         windowMinimum = Int.max
+        // Yeni akış: bir sonraki pakette varış zamanlaması da sıfırlansın.
+        timingSampleRate = 0
     }
 
     // MARK: Ses motoru
@@ -719,16 +782,18 @@ struct StatsRow: View {
     let snapshot: AirSpeakerReceiver.Snapshot
 
     var body: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: 10) {
             stat("Tampon", snapshot.packets > 0
-                 ? "\(Int(snapshot.bufferMs.rounded())) / \(Int(snapshot.targetMs.rounded())) ms" : "—")
-            stat("Biçim", snapshot.sampleRate > 0 ? "\(Int(snapshot.sampleRate / 1000)) kHz" : "—")
-            stat("Kayıp", "\(snapshot.lostPackets + snapshot.latePackets)")
+                 ? "\(Int(snapshot.bufferMs.rounded()))/\(Int(snapshot.targetMs.rounded())) ms" : "—")
+            stat("Kayıp", "\(snapshot.lostPackets)")
+            stat("Geç", "\(snapshot.latePackets + snapshot.stalePackets)")
             stat("Çatlama", "\(snapshot.underruns)")
+            stat("Atlanan", "\(snapshot.trimmedPackets)")
         }
         .overlay(alignment: .bottom) {
             if let sender = snapshot.sender {
-                Text("Gönderen: \(sender)")
+                Text("Gönderen: \(sender)"
+                     + (snapshot.sampleRate > 0 ? " · \(Int(snapshot.sampleRate / 1000)) kHz" : ""))
                     .font(.caption)
                     .foregroundStyle(.white.opacity(0.45))
                     .offset(y: 28)
