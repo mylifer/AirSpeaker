@@ -24,12 +24,14 @@ jobs:
         run: swift test
 
       - name: iPad alıcısını derle (iOS SDK, Swift 5 ve 6)
-        # Swift Playgrounds "Uygulama" projesi tek dosyada @main içerir
-        # (-parse-as-library). Playgrounds sürümüne göre Swift 5 veya Swift 6
-        # dil modu kullanılabildiği için ikisiyle de denetlenir.
+        # Swift Playgrounds oyun alanı sayfası: üst düzey kod içerir ve uygulama
+        # uzantısı olarak derlenir (-application-extension: UIApplication.shared
+        # gibi API'ler yasak). Playgrounds sürümüne göre Swift 5 veya 6 dil modu
+        # kullanılabildiği için ikisiyle de denetlenir. PlaygroundSupport yalnızca
+        # Playgrounds'ta bulunduğundan o kısım #if canImport ile sarılıdır.
         run: |
           for version in 5 6; do
-            xcrun --sdk iphonesimulator swiftc -typecheck -parse-as-library -swift-version "$version" \
+            xcrun --sdk iphonesimulator swiftc -typecheck -application-extension -swift-version "$version" \
               -target arm64-apple-ios16.0-simulator iPad/AirSpeakerReceiver.swift
           done
 

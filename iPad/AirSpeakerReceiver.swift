@@ -1,15 +1,16 @@
-// AirSpeaker — iPad alıcısı (Swift Playgrounds "Uygulama" projesi, tek dosya)
+// AirSpeaker — iPad alıcısı (Swift Playgrounds oyun alanı sayfası, tek dosya)
 //
 // Mac'teki AirSpeaker menü çubuğu uygulamasının UDP ile yayınladığı sesi alır
 // ve AVAudioEngine + AVAudioPlayerNode ile çalar.
 //
 // KULLANIM
-// 1. iPad'de Swift Playgrounds'u açın, "+" ile yeni bir *Uygulama* (App) oluşturun.
-// 2. Soldaki dosya listesinde "MyApp" (Uygulamam) dosyasını açın, içindeki her
-//    şeyi silip bu dosyanın tamamını yapıştırın. "ContentView" dosyasına
-//    dokunmanıza gerek yok; kullanılmaz.
-// 3. Uygulamayı çalıştırın (▶). Yerel ağ izni sorulursa "İzin Ver" deyin.
-//    Uzun dinlemelerde ekran kararmasın diye Ayarlar › Ekran ve Parlaklık ›
+// 1. iPad'de Swift Playgrounds'ta "+" › *Kitap* oluşturun ve açılan oyun alanı
+//    sayfasındaki kodun tamamını silip bu dosyanın tamamını yapıştırın.
+// 2. "Kodumu Çalıştır"ın solundaki hız göstergesi simgesine dokunup
+//    "Sonuçları Etkinleştir"i KAPATIN; açıkken gerçek zamanlı ses takılır.
+// 3. "Kodumu Çalıştır". Yerel ağ izni sorulursa "İzin Ver" deyin. Arayüz sağdaki
+//    canlı görünüm panelinde açılır; görünmüyorsa "Kodumu Çalıştır"ın sağındaki
+//    düğmeyle paneli açın. Uzun dinlemelerde Ayarlar › Ekran ve Parlaklık ›
 //    Otomatik Kilit'i "Hiçbir Zaman" yapın.
 // 4. Ekranda görünen IP adresini Mac'teki AirSpeaker menüsüne girin (port 5000)
 //    ve "Yayını Başlat"a basın.
@@ -21,19 +22,9 @@ import Accelerate
 import AVFoundation
 import Network
 import SwiftUI
-
-// MARK: - Uygulama
-
-@main
-struct AirSpeakerReceiverApp: App {
-    @StateObject private var model = ReceiverViewModel()
-
-    var body: some Scene {
-        WindowGroup {
-            ReceiverView(model: model)
-        }
-    }
-}
+#if canImport(PlaygroundSupport)
+import PlaygroundSupport
+#endif
 
 // MARK: - Paket biçimi (Mac ile aynı)
 
@@ -816,3 +807,11 @@ struct StatsRow: View {
         .background(.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
     }
 }
+
+// MARK: - Başlat
+
+let viewModel = ReceiverViewModel()
+
+#if canImport(PlaygroundSupport)
+PlaygroundPage.current.setLiveView(ReceiverView(model: viewModel))
+#endif

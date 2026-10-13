@@ -64,17 +64,20 @@ sudo "/Library/Application Support/AirSpeaker/uninstall.sh"
 
 ### iPad alıcısı (Swift Playgrounds)
 
-1. iPad'de Swift Playgrounds'u açın ve **+** ile yeni bir **Uygulama** (App)
-   oluşturun.
-2. Soldaki dosya listesinde **MyApp** dosyasını açın, içindekileri silip
+1. iPad'de Swift Playgrounds'ta **+ › Kitap** oluşturun. Açılan oyun alanı
+   sayfasındaki kodun tamamını silip
    [`iPad/AirSpeakerReceiver.swift`](iPad/AirSpeakerReceiver.swift)
-   dosyasının tamamını yapıştırın. **ContentView** dosyası kullanılmaz;
-   olduğu gibi kalabilir.
-3. Uygulamayı çalıştırın (▶). Yerel ağ izni sorulursa izin verin. Ekranda
-   iPad'in IP adresi görünür; bu adresi Mac'teki menüye girip yayını başlatın.
+   dosyasının tamamını yapıştırın.
+2. **Kodumu Çalıştır**'ın solundaki hız göstergesi simgesinden **Sonuçları
+   Etkinleştir**'i kapatın. Açıkken gerçek zamanlı ses takılır.
+3. **Kodumu Çalıştır**. Yerel ağ izni sorulursa izin verin. Arayüz sağdaki canlı
+   görünüm panelinde açılır; görünmüyorsa **Kodumu Çalıştır**'ın sağındaki
+   düğmeyle paneli açın. Ekrandaki IP adresini Mac'teki menüye girip yayını
+   başlatın.
 
-Alıcı, yaklaşık 21 ms ile başlayan ve çatlama olursa büyüyen, ağ sakinken
-yeniden küçülen bir titreşim tamponu kullanır. Ekranda tampon, kayıp paket ve
+Alıcı, yaklaşık 32 ms ile başlayan ve çatlama olursa büyüyen, ağ sakinken
+yeniden küçülen bir titreşim tamponu kullanır; 200 ms'den geç gelen paketleri
+atarak gecikmenin birikmesini önler. Ekranda tampon, kayıp paket ve
 çatlama sayıları görünür.
 
 iPad olmadan test için aynı ağdaki başka bir Mac'te (ya da aynı Mac'te
