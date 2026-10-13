@@ -5,10 +5,11 @@ import SwiftUI
 @main
 struct AirSpeakerApp: App {
     @StateObject private var model = AppModel()
+    @StateObject private var updater = Updater()
 
     var body: some Scene {
         MenuBarExtra {
-            StatusPanel(model: model)
+            StatusPanel(model: model, updater: updater)
         } label: {
             Image(nsImage: StatusIcon.image(for: model.indicator.level))
         }
@@ -173,6 +174,7 @@ final class AppModel: ObservableObject {
 
 struct StatusPanel: View {
     @ObservedObject var model: AppModel
+    @ObservedObject var updater: Updater
 
     var body: some View {
         let indicator = model.indicator
@@ -186,6 +188,7 @@ struct StatusPanel: View {
                 statistics
             }
             Divider()
+            UpdateRow(updater: updater)
             HStack {
                 Spacer()
                 Button("AirSpeaker'dan Çık") { NSApplication.shared.terminate(nil) }
@@ -314,5 +317,59 @@ enum StatusIcon {
         }
         image.isTemplate = false
         return image
+    }
+}
+
+/// Sürüm bilgisi ve otomatik güncelleme durumu.
+struct UpdateRow: View {
+    @ObservedObject var updater: Updater
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Text(updater.currentVersion.map { "Sürüm \($0)" } ?? "Geliştirme sürümü")
+                    .foregroundStyle(.secondary)
+                Spacer()
+                status
+            }
+            .font(.caption)
+
+            if case .ready(let version, _) = updater.state {
+                Button {
+                    updater.install()
+                } label: {
+                    Label("\(version) sürümünü yükle", systemImage: "arrow.down.circle.fill")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.regular)
+                Text("Yönetici parolası istenir; AirSpeaker kurulumdan sonra yeniden açılır.")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var status: some View {
+        switch updater.state {
+        case .disabled:
+            EmptyView()
+        case .idle, .upToDate:
+            Button("Güncellemeleri denetle") { Task { await updater.check() } }
+                .buttonStyle(.borderless)
+        case .checking:
+            Text("Denetleniyor…").foregroundStyle(.secondary)
+        case .downloading(let version):
+            Text("\(version) indiriliyor…").foregroundStyle(.secondary)
+        case .ready:
+            Text("Güncelleme hazır").foregroundStyle(.green)
+        case .installing:
+            Text("Yükleniyor…").foregroundStyle(.secondary)
+        case .failed(let message):
+            Button("Tekrar dene") { Task { await updater.check() } }
+                .buttonStyle(.borderless)
+                .help(message)
+        }
     }
 }

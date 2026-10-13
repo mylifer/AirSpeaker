@@ -8,6 +8,8 @@ on:
 jobs:
   build-and-test:
     runs-on: macos-latest
+    permissions:
+      contents: write  # GitHub Release yayınlamak için
     steps:
       - uses: actions/checkout@v4
 
@@ -91,6 +93,30 @@ jobs:
           test ! -e /Library/Audio/Plug-Ins/HAL/AirSpeaker.driver
           sleep 3
           if build/airspeaker-check --wait 5; then echo "Cihaz kaldırılmadı"; exit 1; fi
+
+      - name: GitHub Release yayınla (otomatik güncelleme)
+        # Varsayılan dala gelen her yeni sürüm (VERSION) bir kez yayınlanır.
+        # Menü çubuğu uygulaması releases/latest'i denetleyip .pkg'yi indirir
+        # ve .sha256 ile doğrular.
+        if: github.event_name == 'push' && github.ref_name == github.event.repository.default_branch
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          VERSION="$(cat VERSION)"
+          if gh release view "v$VERSION" >/dev/null 2>&1; then
+            echo "v$VERSION zaten yayınlanmış; atlanıyor."
+            exit 0
+          fi
+          PKG="build/AirSpeaker-$VERSION.pkg"
+          (cd build && shasum -a 256 "AirSpeaker-$VERSION.pkg" > "AirSpeaker-$VERSION.pkg.sha256")
+          # Sabit adlı kopya: .../releases/latest/download/AirSpeaker.pkg ile ilk kurulum.
+          cp "$PKG" build/AirSpeaker.pkg
+          gh release create "v$VERSION" \
+            "$PKG" "$PKG.sha256" build/AirSpeaker.pkg "build/AirSpeaker-$VERSION.dmg" \
+            --target "$GITHUB_SHA" \
+            --title "AirSpeaker $VERSION" \
+            --notes "Otomatik derleme ($GITHUB_SHA). Kurulu AirSpeaker bu sürümü kendiliğinden bulur; ilk kurulum için README'deki adımlara bakın."
 
       - name: Günlükler
         if: always()

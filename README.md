@@ -11,44 +11,43 @@ macOS için bir **CoreAudio HAL eklentisi (AudioServerPlugIn)**. Kurulduğunda
 | 3 | UDP ile iPad'e yayın, menü çubuğu arayüzü (IP, port, başlat/durdur), DMG kurulum paketi | ✅ |
 | 4 | iPad alıcısı (Swift Playgrounds, tek dosya): UDP alma, titreşim tamponu, çalma | ✅ |
 
-## Hızlı kurulum (DMG)
+## Hızlı kurulum
 
-1. GitHub'da **Actions › macOS** iş akışının son başarılı çalışmasını açın ve
-   en alttaki **AirSpeaker-dmg** dosyasını indirin. Zip'i açınca
-   `AirSpeaker-<sürüm>.dmg` çıkar.
-2. Kurulum paketi Apple Developer ID ile imzalı ve Apple onaylı (notarize)
-   olmadığı için macOS çift tıklamada "doğrulanamadı" deyip **Çöp Kutusuna
-   Taşı** seçeneği sunar. Çöp kutusuna taşımayın; aşağıdaki iki yoldan birini
-   kullanın.
+**Terminal'de tek komut (önerilen):** En son sürümü indirip kurar. `curl` ile
+inen dosyalara karantina işareti konmadığı ve `installer` Gatekeeper denetimi
+yapmadığı için "doğrulanamadı" uyarısı çıkmaz.
 
-   **En kolayı:** Terminal'de karantina işaretini kaldırın, sonra DMG'yi
-   normal şekilde açın (`xattr -c ` yazıp DMG'yi Terminal penceresine
-   sürükleyerek yolunu da ekleyebilirsiniz):
+```bash
+curl -fL -o /tmp/AirSpeaker.pkg https://github.com/mylifer/AirSpeaker/releases/latest/download/AirSpeaker.pkg && sudo installer -pkg /tmp/AirSpeaker.pkg -target /
+```
 
-   ```bash
-   xattr -c ~/Downloads/AirSpeaker-*.dmg
-   open ~/Downloads/AirSpeaker-*.dmg
-   ```
+**ya da DMG ile:** [Releases](https://github.com/mylifer/AirSpeaker/releases/latest)
+sayfasından `AirSpeaker-<sürüm>.dmg`'yi indirin. Paket Apple Developer ID ile
+imzalı ve onaylı (notarize) olmadığı için macOS çift tıklamada "Çöp Kutusuna
+Taşı" önerebilir; taşımayın, önce karantina işaretini kaldırın:
 
-   **A) Terminal ile kurulum (uyarısız):** `installer` komutu Gatekeeper
-   denetimine takılmaz.
+```bash
+xattr -c ~/Downloads/AirSpeaker-*.dmg && open ~/Downloads/AirSpeaker-*.dmg
+```
 
-   ```bash
-   cd ~/Downloads
-   hdiutil attach AirSpeaker-*.dmg
-   sudo installer -pkg "/Volumes/AirSpeaker "*/"AirSpeaker Kurulum.pkg" -target /
-   hdiutil detach "/Volumes/AirSpeaker "*
-   ```
+Sonra:
 
-   **B) Sistem Ayarları ile:** DMG'yi açmayı deneyin, uyarıda **Bitti**'ye
-   basın. **Sistem Ayarları › Gizlilik ve Güvenlik**'in en altında
-   "AirSpeaker… engellendi" satırındaki **Yine de Aç**'a basıp parolanızı
-   girin. DMG açılınca içindeki **AirSpeaker Kurulum.pkg** için de aynısını
-   bir kez daha yapmanız gerekir.
-3. Kurulum bitince menü çubuğunda (sağ üstte) gri bir nokta belirir.
-4. **Sistem Ayarları › Ses › Çıkış**'tan **iPad Ses Çıkışı**'nı seçin.
-5. Noktaya tıklayın, iPad'in IP adresini girin (port varsayılan 5000) ve
+1. Menü çubuğunda (sağ üstte) gri bir nokta belirir.
+2. **Sistem Ayarları › Ses › Çıkış**'tan **iPad Ses Çıkışı**'nı seçin.
+3. Noktaya tıklayın, iPad'in IP adresini girin (port varsayılan 5000) ve
    **Yayını Başlat**'a basın.
+
+### Otomatik güncelleme
+
+AirSpeaker açılışta ve 6 saatte bir yeni sürüm olup olmadığını denetler. Varsa
+paketi arka planda indirir ve SHA-256 ile doğrular; menüde **"x.y.z sürümünü
+yükle"** düğmesi belirir. Düğmeye basınca macOS yönetici parolasını sorar
+(sürücü sistem klasörüne kurulduğu için), kurulumdan sonra AirSpeaker kendiliğinden
+yeniden açılır. Menünün altındaki **Güncellemeleri denetle** ile elle de
+denetleyebilirsiniz.
+
+Yeni sürümler, varsayılan dala gelen ve `VERSION` dosyasını değiştiren her
+gönderimde CI tarafından testlerden sonra GitHub Release olarak yayınlanır.
 
 | Gösterge | Anlamı |
 |---|---|
