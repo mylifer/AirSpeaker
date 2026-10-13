@@ -9,17 +9,33 @@ macOS için bir **CoreAudio HAL eklentisi (AudioServerPlugIn)**. Kurulduğunda
 | 1 | Sanal cihazın sisteme kaydı, ses seviyesi/sessiz kontrolleri, örnekleme hızı seçimi | ✅ |
 | 2 | Cihaza gelen sesin XPC + paylaşımlı bellek ile Swift menü çubuğu uygulamasına aktarılması | ✅ |
 | 3 | UDP ile iPad'e yayın, menü çubuğu arayüzü (IP, port, başlat/durdur), DMG kurulum paketi | ✅ |
-| 4 | iPad alıcı uygulaması (UDP paketlerini çalma) | ⏳ sonraki adım |
+| 4 | iPad alıcısı (Swift Playgrounds, tek dosya): UDP alma, titreşim tamponu, çalma | ✅ |
 
 ## Hızlı kurulum (DMG)
 
 1. GitHub'da **Actions › macOS** iş akışının son başarılı çalışmasını açın ve
    en alttaki **AirSpeaker-dmg** dosyasını indirin. Zip'i açınca
    `AirSpeaker-<sürüm>.dmg` çıkar.
-2. DMG'yi açın ve **AirSpeaker Kurulum.pkg**'ye çift tıklayın.
-   macOS "Apple doğrulayamadı" uyarısı verirse: **Sistem Ayarları › Gizlilik ve
-   Güvenlik**'in altındaki **Yine de Aç** düğmesine basın, paketi tekrar açın.
-   Paket Apple Developer ID ile imzalı olmadığı için bu uyarı normaldir.
+2. Kurulum paketi Apple Developer ID ile imzalı ve Apple onaylı (notarize)
+   olmadığı için macOS çift tıklamada "doğrulanamadı" deyip **Çöp Kutusuna
+   Taşı** seçeneği sunar. Çöp kutusuna taşımayın; aşağıdaki iki yoldan birini
+   kullanın.
+
+   **A) Terminal ile (önerilen, uyarısız):** `installer` komutu Gatekeeper
+   denetimine takılmaz.
+
+   ```bash
+   cd ~/Downloads
+   hdiutil attach AirSpeaker-*.dmg
+   sudo installer -pkg "/Volumes/AirSpeaker "*/"AirSpeaker Kurulum.pkg" -target /
+   hdiutil detach "/Volumes/AirSpeaker "*
+   ```
+
+   **B) Sistem Ayarları ile:** DMG'yi açmayı deneyin, uyarıda **Bitti**'ye
+   basın. **Sistem Ayarları › Gizlilik ve Güvenlik**'in en altında
+   "AirSpeaker… engellendi" satırındaki **Yine de Aç**'a basıp parolanızı
+   girin. DMG açılınca içindeki **AirSpeaker Kurulum.pkg** için de aynısını
+   bir kez daha yapmanız gerekir.
 3. Kurulum bitince menü çubuğunda (sağ üstte) gri bir nokta belirir.
 4. **Sistem Ayarları › Ses › Çıkış**'tan **iPad Ses Çıkışı**'nı seçin.
 5. Noktaya tıklayın, iPad'in IP adresini girin (port varsayılan 5000) ve
@@ -37,9 +53,23 @@ Kaldırmak için Terminal'de:
 sudo "/Library/Application Support/AirSpeaker/uninstall.sh"
 ```
 
-iPad uygulaması henüz yok (Aşama 4). O zamana kadar yayını aynı ağdaki başka bir
-Mac'te (ya da aynı Mac'te `127.0.0.1` hedefiyle) test alıcısıyla
-doğrulayabilirsiniz: `swift run airspeaker-listen --port 5000`.
+### iPad alıcısı (Swift Playgrounds)
+
+1. iPad'de Swift Playgrounds'u açın ve yeni bir **Playground** oluşturun
+   (Uygulama değil).
+2. [`iPad/AirSpeakerReceiver.swift`](iPad/AirSpeakerReceiver.swift)
+   dosyasının tamamını yapıştırın.
+3. **"Sonuçları Etkinleştir" seçeneğini kapatın.** Açıkken her satırın sonucu
+   kaydedildiği için gerçek zamanlı ses takılır.
+4. Kodu çalıştırın. Yerel ağ izni sorulursa izin verin. Ekranda iPad'in IP
+   adresi görünür; bu adresi Mac'teki menüye girip yayını başlatın.
+
+Alıcı, yaklaşık 21 ms ile başlayan ve çatlama olursa büyüyen, ağ sakinken
+yeniden küçülen bir titreşim tamponu kullanır. Ekranda tampon, kayıp paket ve
+çatlama sayıları görünür.
+
+iPad olmadan test için aynı ağdaki başka bir Mac'te (ya da aynı Mac'te
+`127.0.0.1` hedefiyle) test alıcısı: `swift run airspeaker-listen --port 5000`.
 
 ## Mimari
 
@@ -112,6 +142,8 @@ App/Sources/
   AirSpeakerProbe/       Swift: komut satırından uçtan uca IPC (+ --udp) testi
   AirSpeakerListen/      Swift: UDP test alıcısı (airspeaker-listen)
 App/Tests/               Swift birim testleri (paket biçimi, paketleyici)
+iPad/
+  AirSpeakerReceiver.swift  iPad alıcısı: Swift Playgrounds'a yapıştırılan tek dosya
 Package.swift            Swift paketi
 VERSION                  Sürüm numarası (CMake, uygulama ve kurulum paketi kullanır)
 packaging/               pkg kurulum betikleri, karşılama sayfası, kaldırıcı, DMG "Beni Oku"
@@ -289,11 +321,3 @@ little-endian'dır. Tanım ve testler: `App/Sources/AirSpeakerKit/AudioPacket.sw
   gönderilir, sonraki paketler yeni hızı taşır.
 - Alıcı, kayıp paketleri `sequence` boşluklarından, zamanlamayı `frameIndex`'ten
   çıkarabilir. Örnek uygulama: `App/Sources/AirSpeakerListen/main.swift`.
-
-## Aşama 4 yol haritası: iPad alıcısı
-
-1. iPad'de `NWListener` (UDP, port 5000) ile paketleri al ve `AudioPacketHeader`
-   ile çöz. Paket biçimi kodu doğrudan paylaşılabilir.
-2. Küçük bir titreşim (jitter) tamponu (ör. 20–40 ms) ile `AVAudioSourceNode`
-   veya `AudioUnit` üzerinden çal; kayıp paketlerin yerine sessizlik koy.
-3. Mac tarafında iPad'i elle IP girmek yerine Bonjour ile bulma (isteğe bağlı).
