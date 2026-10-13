@@ -4,8 +4,8 @@
 // ve AVAudioEngine + AVAudioPlayerNode ile çalar.
 //
 // KULLANIM
-// 1. iPad'de Swift Playgrounds'u açın, yeni bir *Playground* (Uygulama değil)
-//    oluşturun, içindekileri silip bu dosyanın tamamını yapıştırın.
+// 1. iPad'de Swift Playgrounds'u açın, "+" ile yeni bir *Kitap* (Book) oluşturun
+//    ("Uygulama" değil), sayfadaki kodun tamamını silip bu dosyayı yapıştırın.
 // 2. ÖNEMLİ: "Sonuçları Etkinleştir" (Enable Results) seçeneğini KAPATIN.
 //    Açıkken her satırın sonucu kaydedilir; gerçek zamanlı ses takılır.
 // 3. "Kodumu Çalıştır". Yerel ağ izni sorulursa "İzin Ver" deyin.

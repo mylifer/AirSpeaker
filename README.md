@@ -64,8 +64,9 @@ sudo "/Library/Application Support/AirSpeaker/uninstall.sh"
 
 ### iPad alıcısı (Swift Playgrounds)
 
-1. iPad'de Swift Playgrounds'u açın ve yeni bir **Playground** oluşturun
-   (Uygulama değil).
+1. iPad'de Swift Playgrounds'u açın ve **+** ile yeni bir **Kitap** (Book)
+   oluşturun (**Uygulama** değil). Canlı görünüm (`setLiveView`) yalnızca
+   kitap sayfalarında çalışır.
 2. [`iPad/AirSpeakerReceiver.swift`](iPad/AirSpeakerReceiver.swift)
    dosyasının tamamını yapıştırın.
 3. **"Sonuçları Etkinleştir" seçeneğini kapatın.** Açıkken her satırın sonucu
