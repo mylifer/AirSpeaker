@@ -21,7 +21,16 @@ macOS için bir **CoreAudio HAL eklentisi (AudioServerPlugIn)**. Kurulduğunda
    Taşı** seçeneği sunar. Çöp kutusuna taşımayın; aşağıdaki iki yoldan birini
    kullanın.
 
-   **A) Terminal ile (önerilen, uyarısız):** `installer` komutu Gatekeeper
+   **En kolayı:** Terminal'de karantina işaretini kaldırın, sonra DMG'yi
+   normal şekilde açın (`xattr -c ` yazıp DMG'yi Terminal penceresine
+   sürükleyerek yolunu da ekleyebilirsiniz):
+
+   ```bash
+   xattr -c ~/Downloads/AirSpeaker-*.dmg
+   open ~/Downloads/AirSpeaker-*.dmg
+   ```
+
+   **A) Terminal ile kurulum (uyarısız):** `installer` komutu Gatekeeper
    denetimine takılmaz.
 
    ```bash
