@@ -23,6 +23,13 @@ jobs:
       - name: Swift birim testleri (UDP paket biçimi)
         run: swift test
 
+      - name: iPad alıcısını derle (iOS SDK, tip denetimi)
+        # PlaygroundSupport yalnızca Swift Playgrounds'ta bulunur; dosya onu
+        # #if canImport ile sardığı için geri kalan her şey burada derlenir.
+        run: |
+          xcrun --sdk iphonesimulator swiftc -typecheck -swift-version 5 \
+            -target arm64-apple-ios16.0-simulator iPad/AirSpeakerReceiver.swift
+
       - name: Swift araçlarını ve universal uygulamayı derle
         run: |
           swift build -c release
