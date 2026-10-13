@@ -43,7 +43,9 @@ COMPONENTS="$WORK/components.plist"
 pkgbuild --analyze --root "$PAYLOAD" "$COMPONENTS"
 index=0
 while /usr/libexec/PlistBuddy -c "Print :$index" "$COMPONENTS" >/dev/null 2>&1; do
-  /usr/libexec/PlistBuddy -c "Set :$index:BundleIsRelocatable false" "$COMPONENTS"
+  # Anahtar her bileşende bulunmayabilir; sil ve yeniden ekle.
+  /usr/libexec/PlistBuddy -c "Delete :$index:BundleIsRelocatable" "$COMPONENTS" >/dev/null 2>&1 || true
+  /usr/libexec/PlistBuddy -c "Add :$index:BundleIsRelocatable bool false" "$COMPONENTS"
   index=$((index + 1))
 done
 
