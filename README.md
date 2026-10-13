@@ -8,7 +8,38 @@ macOS için bir **CoreAudio HAL eklentisi (AudioServerPlugIn)**. Kurulduğunda
 |---|---|---|
 | 1 | Sanal cihazın sisteme kaydı, ses seviyesi/sessiz kontrolleri, örnekleme hızı seçimi | ✅ |
 | 2 | Cihaza gelen sesin XPC + paylaşımlı bellek ile Swift menü çubuğu uygulamasına aktarılması | ✅ |
-| 3 | Swift uygulamasından UDP ile hedef IP'ye yayın, IP ayarları | ⏳ sonraki adım |
+| 3 | UDP ile iPad'e yayın, menü çubuğu arayüzü (IP, port, başlat/durdur), DMG kurulum paketi | ✅ |
+| 4 | iPad alıcı uygulaması (UDP paketlerini çalma) | ⏳ sonraki adım |
+
+## Hızlı kurulum (DMG)
+
+1. GitHub'da **Actions › macOS** iş akışının son başarılı çalışmasını açın ve
+   en alttaki **AirSpeaker-dmg** dosyasını indirin. Zip'i açınca
+   `AirSpeaker-<sürüm>.dmg` çıkar.
+2. DMG'yi açın ve **AirSpeaker Kurulum.pkg**'ye çift tıklayın.
+   macOS "Apple doğrulayamadı" uyarısı verirse: **Sistem Ayarları › Gizlilik ve
+   Güvenlik**'in altındaki **Yine de Aç** düğmesine basın, paketi tekrar açın.
+   Paket Apple Developer ID ile imzalı olmadığı için bu uyarı normaldir.
+3. Kurulum bitince menü çubuğunda (sağ üstte) gri bir nokta belirir.
+4. **Sistem Ayarları › Ses › Çıkış**'tan **iPad Ses Çıkışı**'nı seçin.
+5. Noktaya tıklayın, iPad'in IP adresini girin (port varsayılan 5000) ve
+   **Yayını Başlat**'a basın.
+
+| Gösterge | Anlamı |
+|---|---|
+| 🟢 Yeşil | Yayında (alt satırda "ses yok" yazıyorsa çıkış cihazı seçili değil veya çalan bir şey yok) |
+| ⚪ Gri | Beklemede (yayın kapalı) veya bağlanıyor |
+| 🔴 Kırmızı | Hata: hedefe ulaşılamıyor, hedef portu dinlemiyor, sürücü veya broker yok |
+
+Kaldırmak için Terminal'de:
+
+```bash
+sudo "/Library/Application Support/AirSpeaker/uninstall.sh"
+```
+
+iPad uygulaması henüz yok (Aşama 4). O zamana kadar yayını aynı ağdaki başka bir
+Mac'te (ya da aynı Mac'te `127.0.0.1` hedefiyle) test alıcısıyla
+doğrulayabilirsiniz: `swift run airspeaker-listen --port 5000`.
 
 ## Mimari
 
@@ -22,7 +53,10 @@ macOS için bir **CoreAudio HAL eklentisi (AudioServerPlugIn)**. Kurulduğunda
                   └───────────────────────▲─────────────────────────┘
                                           │ okur (5 ms'de bir)
   XPC: driver-hello ──▶ airspeaker-broker ──▶ XPC: driver-state ──▶ AirSpeaker.app (Swift)
-                        (LaunchDaemon)                              menü çubuğu, AudioSink
+                        (LaunchDaemon)                              menü çubuğu
+                                                                         │ UDPAudioSender
+                                                                         ▼ (NWConnection)
+                                                             UDP ──▶ iPad :5000
 ```
 
 - **Kext gerekmez.** Sanal ses cihazları için Apple'ın desteklediği yöntem,
@@ -73,10 +107,14 @@ Broker/
   main.c                 airspeaker-broker LaunchDaemon'u (C, XPC)
   com.mylifer.airspeaker.broker.plist   launchd tanımı
 App/Sources/
-  AirSpeakerKit/         Swift: broker istemcisi, halka tampon okuyucu, AudioSink protokolü
-  AirSpeakerApp/         Swift: menü çubuğu uygulaması (yeşil/sarı/kırmızı gösterge)
-  AirSpeakerProbe/       Swift: komut satırından uçtan uca IPC testi
-Package.swift            Swift paketi (uygulama, probe, AirSpeakerKit)
+  AirSpeakerKit/         Swift: broker istemcisi, halka tampon okuyucu, UDP paket biçimi, UDPAudioSender
+  AirSpeakerApp/         Swift: menü çubuğu uygulaması (IP/port, başlat/durdur, durum göstergesi)
+  AirSpeakerProbe/       Swift: komut satırından uçtan uca IPC (+ --udp) testi
+  AirSpeakerListen/      Swift: UDP test alıcısı (airspeaker-listen)
+App/Tests/               Swift birim testleri (paket biçimi, paketleyici)
+Package.swift            Swift paketi
+VERSION                  Sürüm numarası (CMake, uygulama ve kurulum paketi kullanır)
+packaging/               pkg kurulum betikleri, karşılama sayfası, kaldırıcı, DMG "Beni Oku"
 CMakeLists.txt           Sistem bileşenleri: sürücü, broker, airspeaker-check, testler
 Tools/
   airspeaker-check.m     Objective-C doğrulama aracı (CoreAudio istemci API'si)
@@ -85,14 +123,15 @@ tests/
 scripts/
   install.sh             Sürücü + broker'ı kur, coreaudiod'u yeniden başlat
   uninstall.sh           Kaldır
-  build-app.sh           Swift uygulamasını derle ve build/AirSpeaker.app olarak paketle
+  build-app.sh           Swift uygulamasını derle ve build/AirSpeaker.app olarak paketle (--universal)
+  package.sh             build/AirSpeaker-<sürüm>.pkg ve .dmg üret
   restart-coreaudio.sh   coreaudiod'u yeniden başlat
   logs.sh                Sürücü + broker günlüklerini canlı izle
 .vscode/                 Görevler, hata ayıklama, clangd ayarları
 .github/workflows/       macOS: derleme, testler, kurulum, uçtan uca ses aktarım testi
 ```
 
-## Derleme ve kurulum
+## Kaynaktan derleme (geliştirme)
 
 ### VS Code ile
 
@@ -102,8 +141,13 @@ scripts/
    terminalde yönetici parolanız istenir.
 4. **Tasks: Run Task › AirSpeaker: Menü çubuğu uygulamasını çalıştır**: menü
    çubuğunda renkli bir nokta belirir.
-5. Sistem Ayarları › Ses › Çıkış'ta "iPad Ses Çıkışı"nı seçip bir şey çalın:
-   nokta yeşile döner, paneldeki seviye göstergesi hareket eder.
+5. Sistem Ayarları › Ses › Çıkış'ta "iPad Ses Çıkışı"nı seçin, menüde IP/port
+   girip yayını başlatın.
+6. Yayını test etmek için **Tasks: Run Task › AirSpeaker: UDP dinleyici (test,
+   port 5000)** görevini çalıştırıp menüde hedef olarak `127.0.0.1` girin.
+
+DMG'yi yerelde üretmek için: **Tasks: Run Task › AirSpeaker: Kurulum paketi
+(DMG) oluştur** (çıktı: `build/AirSpeaker-<sürüm>.dmg`).
 
 Uygulamada hata ayıklamak için Run and Debug panelinden
 **AirSpeaker menü çubuğu uygulaması (LLDB)** yapılandırmasını kullanın.
@@ -121,17 +165,17 @@ scripts/install.sh
 scripts/build-app.sh
 open build/AirSpeaker.app
 
-# IPC'yi uygulamasız doğrulamak için (cihaza ses çalarken):
-swift run airspeaker-probe --seconds 10 --expect-audio
+# Birim testleri
+ctest --test-dir build && swift test
+
+# Uygulamasız uçtan uca test (cihaza ses çalarken):
+swift run airspeaker-listen --port 5000 &          # test alıcısı
+swift run airspeaker-probe --seconds 10 --expect-audio --udp 127.0.0.1:5000
+
+# Kurulum paketi + DMG
+scripts/build-app.sh release --universal
+scripts/package.sh
 ```
-
-### Menü çubuğu göstergesi
-
-| Renk | Anlamı |
-|---|---|
-| 🟢 Yeşil | Sürücüye bağlı, ses akıyor |
-| 🟡 Sarı | Sürücüye bağlı, ses yok (cihaz seçili değil veya çalan bir şey yok) |
-| 🔴 Kırmızı | Broker'a ulaşılamıyor ya da sürücü kayıtlı değil |
 
 Derleme çıktısı `build/AirSpeaker.driver` paketidir. Paket ad-hoc olarak
 imzalanır; bu, yerel kullanım için yeterlidir. Developer ID ile imzalamak için:
@@ -145,19 +189,21 @@ imzalanır; bu, yerel kullanım için yeterlidir. Developer ID ile imzalamak iç
 - **Audio MIDI Ayarları** uygulamasında 44.1 / 48 / 96 kHz arasından seçim yapılabilir.
 - `build/airspeaker-check --set-default` cihazı varsayılan çıkış yapar.
 
-Ses henüz ağa gönderilmiyor (Aşama 3). Bu cihaz seçiliyken hoparlörden ses
-gelmemesi beklenen davranıştır.
+Bu cihaz seçiliyken Mac'in hoparlöründen ses gelmemesi beklenen davranıştır;
+ses yalnızca UDP ile yayınlanır.
 
 ### Kaldırma
 
 ```bash
-scripts/uninstall.sh
+scripts/uninstall.sh   # DMG ile kurulmuş olsa da çalışır
 ```
 
 ## Sorun giderme
 
 | Belirti | Kontrol |
 |---|---|
+| "Hedef bu portu dinlemiyor" | iPad'de (veya test alıcısında) uygulama açık ve aynı port mu? |
+| "Hedefe ulaşılamıyor" | Mac ve iPad aynı Wi-Fi ağında mı? IP doğru mu? (iPad: Ayarlar › Wi-Fi › ⓘ) |
 | Menü çubuğunda kırmızı nokta, "broker'a ulaşılamıyor" | `sudo launchctl print system/com.mylifer.airspeaker.broker` — broker yüklü mü? `scripts/install.sh` tekrar çalıştırılabilir |
 | Kırmızı nokta, "sürücü kayıtlı değil" | `scripts/logs.sh`: sürücü "airspeaker-broker'a kaydolundu" yazmalı; yazmıyorsa `scripts/restart-coreaudio.sh` |
 | Cihaz listede yok | `ls -l /Library/Audio/Plug-Ins/HAL/` — paket `root:wheel` sahipliğinde mi? |
@@ -216,12 +262,38 @@ PlugIn (ID 1)
   aboneler `xpc_connection_set_peer_code_signing_requirement` ile yalnızca bu
   uygulamayla sınırlandırılabilir.
 
-## Aşama 3 yol haritası: UDP yayını
+## UDP paket biçimi
 
-1. `AirSpeakerKit` içinde `AudioSink` protokolünü uygulayan bir `UDPSender`
-   (Network.framework, `NWConnection` UDP). `AirSpeakerEngine.setSink(_:)` ile
-   bağlanır; ses zaten motorun kuyruğunda 5 ms'lik parçalar halinde gelir.
-2. Paket biçimi: sıra numarası + kare konumu + örnekleme hızı başlığı ve PCM
-   (gerekirse Int16'ya dönüştürülmüş) yük. Paket başına MTU'ya sığan kare sayısı.
-3. Menü çubuğu paneline hedef IP/port alanı (UserDefaults'ta saklanır) ve
-   gönderim durumu.
+Her paket 28 baytlık bir başlık ve ardından 16-bit PCM'den oluşur. Tüm sayılar
+little-endian'dır. Tanım ve testler: `App/Sources/AirSpeakerKit/AudioPacket.swift`.
+
+| Bayt | Alan | Tür | Açıklama |
+|---|---|---|---|
+| 0 | magic | 4 bayt | `ASPK` |
+| 4 | version | UInt8 | 1 |
+| 5 | format | UInt8 | 1 = PCM signed 16-bit, interleaved |
+| 6 | channelCount | UInt8 | 2 |
+| 7 | — | UInt8 | 0 |
+| 8 | sampleRate | UInt32 | Hz (ör. 48000) |
+| 12 | sequence | UInt32 | her pakette +1; kayıp/sıra dışı paket tespiti |
+| 16 | frameIndex | UInt64 | paketin ilk karesinin akıştaki konumu |
+| 24 | frameCount | UInt16 | paketteki kare sayısı (normalde 256) |
+| 26 | — | UInt16 | 0 |
+| 28 | PCM | | `frameCount × channelCount × 2` bayt (L, R, L, R, …) |
+
+- 256 kare/paket: 48 kHz'de 5,3 ms ses, 1052 baytlık paket (MTU altında,
+  parçalanma yok), ~188 paket/sn, ~1,6 Mbit/s.
+- Gönderici `serviceClass = .interactiveVoice` kullanır (Wi-Fi'de WMM ses
+  kuyruğu). Ağ yolu hazır değilken gelen ses atılır, biriktirilmez.
+- Örnekleme hızı değişirse (Audio MIDI Ayarları) yarım paket eski hızla
+  gönderilir, sonraki paketler yeni hızı taşır.
+- Alıcı, kayıp paketleri `sequence` boşluklarından, zamanlamayı `frameIndex`'ten
+  çıkarabilir. Örnek uygulama: `App/Sources/AirSpeakerListen/main.swift`.
+
+## Aşama 4 yol haritası: iPad alıcısı
+
+1. iPad'de `NWListener` (UDP, port 5000) ile paketleri al ve `AudioPacketHeader`
+   ile çöz. Paket biçimi kodu doğrudan paylaşılabilir.
+2. Küçük bir titreşim (jitter) tamponu (ör. 20–40 ms) ile `AVAudioSourceNode`
+   veya `AudioUnit` üzerinden çal; kayıp paketlerin yerine sessizlik koy.
+3. Mac tarafında iPad'i elle IP girmek yerine Bonjour ile bulma (isteğe bağlı).
