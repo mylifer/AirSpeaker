@@ -30,6 +30,8 @@ public final class UDPAudioSender: AudioSink {
         public var lastError: String?
         public var lastErrorUptime: TimeInterval = 0
         public var sampleRate: Double = 0
+
+        public init() {}
     }
 
     /// Durum değişiklikleri ana kuyrukta bildirilir.
