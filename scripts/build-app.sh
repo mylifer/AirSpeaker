@@ -1,20 +1,42 @@
 #!/usr/bin/env bash
 # Swift menü çubuğu uygulamasını derler ve build/AirSpeaker.app olarak paketler.
-# Kullanım: scripts/build-app.sh [debug|release]
+# Kullanım: scripts/build-app.sh [debug|release] [--universal]
+#   --universal  arm64 + x86_64 (Apple Silicon + Intel) tek ikili; dağıtım için.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-CONFIG="${1:-release}"
-APP="$ROOT/build/AirSpeaker.app"
+CONFIG="release"
+UNIVERSAL=0
+for argument in "$@"; do
+  case "$argument" in
+    debug|release) CONFIG="$argument" ;;
+    --universal) UNIVERSAL=1 ;;
+    *) echo "Kullanım: $0 [debug|release] [--universal]" >&2; exit 64 ;;
+  esac
+done
 
+VERSION="$(cat "$ROOT/VERSION")"
+APP="$ROOT/build/AirSpeaker.app"
 cd "$ROOT"
-swift build -c "$CONFIG" --product AirSpeaker
-BIN_DIR="$(swift build -c "$CONFIG" --show-bin-path)"
+
+if [[ $UNIVERSAL == 1 ]]; then
+  binaries=()
+  for arch in arm64 x86_64; do
+    swift build -c "$CONFIG" --arch "$arch" --product AirSpeaker
+    binaries+=("$(swift build -c "$CONFIG" --arch "$arch" --show-bin-path)/AirSpeaker")
+  done
+  BINARY="$ROOT/build/AirSpeaker-universal"
+  mkdir -p "$ROOT/build"
+  lipo -create -output "$BINARY" "${binaries[@]}"
+else
+  swift build -c "$CONFIG" --product AirSpeaker
+  BINARY="$(swift build -c "$CONFIG" --show-bin-path)/AirSpeaker"
+fi
 
 echo "==> Paketleniyor: $APP"
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS"
-cp "$BIN_DIR/AirSpeaker" "$APP/Contents/MacOS/AirSpeaker"
+cp "$BINARY" "$APP/Contents/MacOS/AirSpeaker"
 cat > "$APP/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -29,9 +51,9 @@ cat > "$APP/Contents/Info.plist" <<PLIST
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
-	<string>0.2.0</string>
+	<string>$VERSION</string>
 	<key>CFBundleVersion</key>
-	<string>0.2.0</string>
+	<string>$VERSION</string>
 	<key>LSMinimumSystemVersion</key>
 	<string>13.0</string>
 	<!-- Yalnızca menü çubuğunda çalışır; Dock simgesi yok. -->

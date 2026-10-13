@@ -1,0 +1,19 @@
+#!/bin/bash
+# Dosyalar yerleştikten sonra: broker'ı başlat, coreaudiod'u yeniden başlat
+# (sürücü yüklensin) ve menü çubuğu uygulamasını oturumdaki kullanıcı için aç.
+BROKER_PLIST="/Library/LaunchDaemons/com.mylifer.airspeaker.broker.plist"
+
+chown -R root:wheel "/Library/Audio/Plug-Ins/HAL/AirSpeaker.driver"
+chmod -R go-w "/Library/Audio/Plug-Ins/HAL/AirSpeaker.driver"
+
+launchctl bootout system/com.mylifer.airspeaker.broker 2>/dev/null || true
+launchctl bootstrap system "$BROKER_PLIST" || echo "airspeaker-broker başlatılamadı"
+
+launchctl kickstart -k system/com.apple.audio.coreaudiod 2>/dev/null || killall coreaudiod 2>/dev/null || true
+
+console_user="$(stat -f %Su /dev/console)"
+if [[ -n "$console_user" && "$console_user" != "root" && "$console_user" != "loginwindow" ]]; then
+  console_uid="$(id -u "$console_user")"
+  launchctl asuser "$console_uid" sudo -u "$console_user" open -g "/Applications/AirSpeaker.app" || true
+fi
+exit 0

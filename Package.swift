@@ -11,6 +11,7 @@ let package = Package(
     products: [
         .executable(name: "AirSpeaker", targets: ["AirSpeakerApp"]),
         .executable(name: "airspeaker-probe", targets: ["AirSpeakerProbe"]),
+        .executable(name: "airspeaker-listen", targets: ["AirSpeakerListen"]),
         .library(name: "AirSpeakerKit", targets: ["AirSpeakerKit"]),
     ],
     targets: [
@@ -33,11 +34,22 @@ let package = Package(
             dependencies: ["AirSpeakerKit"],
             path: "App/Sources/AirSpeakerApp"
         ),
-        // Komut satırından uçtan uca IPC testi.
+        // Komut satırından uçtan uca IPC (ve isteğe bağlı UDP) testi.
         .executableTarget(
             name: "AirSpeakerProbe",
             dependencies: ["AirSpeakerKit"],
             path: "App/Sources/AirSpeakerProbe"
+        ),
+        // UDP ses paketlerini dinleyen test alıcısı.
+        .executableTarget(
+            name: "AirSpeakerListen",
+            dependencies: ["AirSpeakerKit"],
+            path: "App/Sources/AirSpeakerListen"
+        ),
+        .testTarget(
+            name: "AirSpeakerKitTests",
+            dependencies: ["AirSpeakerKit"],
+            path: "App/Tests/AirSpeakerKitTests"
         ),
     ]
 )

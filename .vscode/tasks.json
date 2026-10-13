@@ -68,6 +68,27 @@
       ]
     },
     {
+      "label": "AirSpeaker: Kurulum paketi (DMG) oluştur",
+      "type": "shell",
+      "command": "cmake --preset default && cmake --build --preset default && scripts/build-app.sh release --universal && scripts/package.sh",
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "AirSpeaker: UDP dinleyici (test, port 5000)",
+      "type": "shell",
+      "command": "swift run airspeaker-listen --port 5000",
+      "isBackground": true,
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated"
+      },
+      "problemMatcher": []
+    },
+    {
       "label": "AirSpeaker: Kaldır (sudo)",
       "type": "shell",
       "command": "${workspaceFolder}/scripts/uninstall.sh",

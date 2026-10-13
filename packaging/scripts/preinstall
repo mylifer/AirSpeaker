@@ -1,0 +1,5 @@
+#!/bin/bash
+# Güncelleme kurulumunda çalışan eski sürümü durdur.
+pkill -x AirSpeaker 2>/dev/null || true
+launchctl bootout system/com.mylifer.airspeaker.broker 2>/dev/null || true
+exit 0

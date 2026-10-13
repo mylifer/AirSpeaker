@@ -4,7 +4,10 @@ cmake_minimum_required(VERSION 3.24)
 set(CMAKE_OSX_DEPLOYMENT_TARGET "12.0" CACHE STRING "Desteklenen en düşük macOS sürümü")
 set(CMAKE_OSX_ARCHITECTURES "arm64;x86_64" CACHE STRING "Universal (Apple Silicon + Intel) derleme")
 
-project(AirSpeaker VERSION 0.1.0 LANGUAGES C CXX OBJC)
+# Sürüm numarasının tek kaynağı VERSION dosyasıdır (uygulama ve kurulum paketi de kullanır).
+file(STRINGS "${CMAKE_CURRENT_SOURCE_DIR}/VERSION" AIRSPEAKER_VERSION LIMIT_COUNT 1)
+
+project(AirSpeaker VERSION ${AIRSPEAKER_VERSION} LANGUAGES C CXX OBJC)
 
 if(NOT APPLE)
   message(FATAL_ERROR "AirSpeaker bir CoreAudio HAL eklentisidir ve yalnızca macOS üzerinde derlenebilir.")

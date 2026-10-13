@@ -1,0 +1,19 @@
+AirSpeaker — Mac'in sesini iPad'e yayınlar
+==========================================
+
+KURULUM
+1. "AirSpeaker Kurulum.pkg" dosyasına çift tıklayın.
+   macOS "doğrulanamadı" uyarısı verirse: Sistem Ayarları > Gizlilik ve
+   Güvenlik bölümünün altındaki "Yine de Aç" düğmesine basın ve paketi tekrar
+   açın. (Paket Apple Developer ID ile imzalı olmadığı için bu uyarı normaldir.)
+2. Kurulumu tamamlayın. Menü çubuğunda (sağ üstte) gri bir nokta belirir.
+
+KULLANIM
+1. Sistem Ayarları > Ses > Çıkış bölümünden "iPad Ses Çıkışı"nı seçin.
+2. Menü çubuğundaki noktaya tıklayın, iPad'in IP adresini ve portu
+   (varsayılan 5000) girin, "Yayını Başlat"a basın.
+   Yeşil: yayında · Gri: beklemede · Kırmızı: hata
+
+KALDIRMA
+Terminal'de:
+  sudo "/Library/Application Support/AirSpeaker/uninstall.sh"

@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
 
 jobs:
-  build-and-register:
+  build-and-test:
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
@@ -17,47 +17,75 @@ jobs:
       - name: Derle (sürücü, broker, araçlar)
         run: cmake --build --preset default
 
-      - name: Birim testleri
+      - name: C birim testleri (halka tampon)
         run: ctest --test-dir build --output-on-failure
 
-      - name: Swift paketini derle (uygulama + probe)
+      - name: Swift birim testleri (UDP paket biçimi)
+        run: swift test
+
+      - name: Swift araçlarını ve universal uygulamayı derle
         run: |
           swift build -c release
-          scripts/build-app.sh release
+          scripts/build-app.sh release --universal
 
-      - name: Paketi incele
+      - name: Kurulum paketi ve DMG
+        run: scripts/package.sh
+
+      - name: Paketleri incele
         run: |
           set -euxo pipefail
+          VERSION="$(cat VERSION)"
           plutil -lint build/AirSpeaker.driver/Contents/Info.plist
           plutil -lint Broker/com.mylifer.airspeaker.broker.plist
-          lipo -info build/AirSpeaker.driver/Contents/MacOS/AirSpeaker
+          lipo -info build/AirSpeaker.driver/Contents/MacOS/AirSpeaker | grep -Eq 'x86_64 arm64|arm64 x86_64'
+          lipo -info build/AirSpeaker.app/Contents/MacOS/AirSpeaker | grep -Eq 'x86_64 arm64|arm64 x86_64'
           nm -gU build/AirSpeaker.driver/Contents/MacOS/AirSpeaker | grep -q '_AirSpeaker_Create'
           codesign --verify --strict --verbose=2 build/AirSpeaker.driver
           codesign --verify --strict --verbose=2 build/AirSpeaker.app
+          pkgutil --payload-files "build/AirSpeaker-$VERSION.pkg" | tee payload.txt
+          grep -q 'Applications/AirSpeaker.app/Contents/MacOS/AirSpeaker' payload.txt
+          grep -q 'Library/Audio/Plug-Ins/HAL/AirSpeaker.driver/Contents/MacOS/AirSpeaker' payload.txt
+          grep -q 'Library/PrivilegedHelperTools/com.mylifer.airspeaker.broker' payload.txt
+          hdiutil verify "build/AirSpeaker-$VERSION.dmg"
 
-      - name: Kur ve cihaz kaydını doğrula
-        run: |
-          scripts/install.sh
-          build/airspeaker-check --list --wait 30
-
-      - name: Uçtan uca IPC testi (sürücü → broker → Swift)
+      - name: pkg ile kur ve cihaz kaydını doğrula
         run: |
           set -euxo pipefail
+          sudo installer -pkg "build/AirSpeaker-$(cat VERSION).pkg" -target /
+          test -d /Applications/AirSpeaker.app
+          build/airspeaker-check --list --wait 30
+
+      - name: Uçtan uca test (sürücü → broker → Swift → UDP → dinleyici)
+        run: |
+          set -euxo pipefail
+          BIN="$(swift build -c release --show-bin-path)"
           build/airspeaker-check --set-default
-          # Varsayılan çıkışa (sanal cihaza) ses çal; probe sesi paylaşımlı bellekten okumalı.
+          "$BIN/airspeaker-listen" --port 5000 --seconds 16 --expect-audio > listen.log 2>&1 &
+          listener=$!
+          sleep 1
+          # Varsayılan çıkışa (sanal cihaza) ses çal.
           ( for i in $(seq 1 12); do afplay /System/Library/Sounds/Glass.aiff; done ) &
           player=$!
-          "$(swift build -c release --show-bin-path)/airspeaker-probe" --seconds 10 --expect-audio
+          "$BIN/airspeaker-probe" --seconds 10 --expect-audio --udp 127.0.0.1:5000
           kill "$player" 2>/dev/null || true
+          wait "$listener" || { cat listen.log; exit 1; }
+          cat listen.log
+
+      - name: Kaldırıcıyı doğrula
+        run: |
+          set -euxo pipefail
+          sudo "/Library/Application Support/AirSpeaker/uninstall.sh"
+          test ! -e /Applications/AirSpeaker.app
+          test ! -e /Library/Audio/Plug-Ins/HAL/AirSpeaker.driver
+          sleep 3
+          if build/airspeaker-check --wait 5; then echo "Cihaz kaldırılmadı"; exit 1; fi
 
       - name: Günlükler
         if: always()
-        run: log show --last 10m --style compact --predicate 'subsystem == "com.mylifer.airspeaker" OR (process == "coreaudiod" AND eventMessage CONTAINS[c] "AirSpeaker")' | tail -n 150 || true
+        run: log show --last 15m --style compact --predicate 'subsystem == "com.mylifer.airspeaker" OR (process == "coreaudiod" AND eventMessage CONTAINS[c] "AirSpeaker")' | tail -n 80 || true
 
       - uses: actions/upload-artifact@v4
         with:
-          name: AirSpeaker
-          path: |
-            build/AirSpeaker.driver
-            build/AirSpeaker.app
-            build/airspeaker-broker
+          name: AirSpeaker-dmg
+          path: build/AirSpeaker-*.dmg
+          if-no-files-found: error
