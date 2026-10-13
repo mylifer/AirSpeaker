@@ -1,16 +1,17 @@
 #!/usr/bin/env bash
-# AirSpeaker.driver'ı sistemden kaldırır ve coreaudiod'u yeniden başlatır.
+# AirSpeaker sistem bileşenlerini (sürücü + broker) kaldırır ve coreaudiod'u
+# yeniden başlatır.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-DEST="/Library/Audio/Plug-Ins/HAL/AirSpeaker.driver"
+BROKER_LABEL="com.mylifer.airspeaker.broker"
 
-if [[ ! -e "$DEST" ]]; then
-  echo "AirSpeaker.driver kurulu değil ($DEST)."
-  exit 0
-fi
+echo "==> airspeaker-broker kaldırılıyor"
+sudo launchctl bootout "system/$BROKER_LABEL" 2>/dev/null || true
+sudo rm -f "/Library/LaunchDaemons/$BROKER_LABEL.plist" "/Library/PrivilegedHelperTools/$BROKER_LABEL"
 
-echo "==> Kaldırılıyor: $DEST"
-sudo rm -rf "$DEST"
+echo "==> AirSpeaker.driver kaldırılıyor"
+sudo rm -rf "/Library/Audio/Plug-Ins/HAL/AirSpeaker.driver"
+
 "$ROOT/scripts/restart-coreaudio.sh"
 echo "==> Kaldırıldı."

@@ -27,6 +27,14 @@
 	<key>NSHumanReadableCopyright</key>
 	<string>AirSpeaker</string>
 
+	<!-- coreaudiod sandbox'ı, eklentinin yalnızca burada listelenen sistem Mach
+	     servislerine bağlanmasına izin verir (Shared/include/AirSpeakerIPC.h
+	     içindeki AIRSPEAKER_BROKER_SERVICE ile aynı olmalı). -->
+	<key>AudioServerPlugIn_MachServices</key>
+	<array>
+		<string>com.mylifer.airspeaker.broker</string>
+	</array>
+
 	<!-- CFPlugIn kaydı: coreaudiod bu paketi AudioServerPlugIn olarak tanır. -->
 	<key>CFPlugInDynamicRegistration</key>
 	<string>NO</string>

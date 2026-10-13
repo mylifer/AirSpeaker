@@ -52,7 +52,7 @@ set_target_properties(AirSpeakerDriver PROPERTIES
   VISIBILITY_INLINES_HIDDEN ON
 )
 
-target_include_directories(AirSpeakerDriver PRIVATE Driver)
+target_include_directories(AirSpeakerDriver PRIVATE Driver Shared/include)
 target_compile_options(AirSpeakerDriver PRIVATE ${AIRSPEAKER_WARNING_FLAGS})
 # Eklenti coreaudiod içinde çalışır; CoreAudio istemci kütüphanesine değil,
 # yalnızca CoreFoundation'a bağlanır (AudioServerPlugIn.h yalnızca başlıktır).
@@ -67,9 +67,31 @@ add_custom_command(TARGET AirSpeakerDriver POST_BUILD
   VERBATIM
 )
 
+# --- Broker daemon: airspeaker-broker -------------------------------------------
+#
+# Sürücü (coreaudiod, sistem alanı) ile kullanıcı oturumundaki uygulama
+# arasında paylaşımlı belleği aktaran LaunchDaemon. Bkz. Broker/main.c.
+
+add_executable(airspeaker-broker Broker/main.c)
+target_include_directories(airspeaker-broker PRIVATE Shared/include)
+target_compile_options(airspeaker-broker PRIVATE ${AIRSPEAKER_WARNING_FLAGS})
+add_custom_command(TARGET airspeaker-broker POST_BUILD
+  COMMAND codesign --force --sign "${AIRSPEAKER_CODESIGN_IDENTITY}" --timestamp=none
+          --identifier com.mylifer.airspeaker.broker "$<TARGET_FILE:airspeaker-broker>"
+  VERBATIM
+)
+
 # --- Doğrulama aracı: airspeaker-check (Objective-C) ---------------------------
 
 add_executable(airspeaker-check Tools/airspeaker-check.m)
 target_include_directories(airspeaker-check PRIVATE Driver)
 target_compile_options(airspeaker-check PRIVATE -fobjc-arc ${AIRSPEAKER_WARNING_FLAGS})
 target_link_libraries(airspeaker-check PRIVATE "-framework Foundation" "-framework CoreAudio")
+
+# --- Testler -------------------------------------------------------------------
+
+enable_testing()
+add_executable(ring-buffer-test tests/ring_buffer_test.c)
+target_include_directories(ring-buffer-test PRIVATE Shared/include)
+target_compile_options(ring-buffer-test PRIVATE ${AIRSPEAKER_WARNING_FLAGS})
+add_test(NAME ring-buffer COMMAND ring-buffer-test)

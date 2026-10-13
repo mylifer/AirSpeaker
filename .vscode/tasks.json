@@ -12,29 +12,81 @@
       "type": "shell",
       "command": "cmake --build --preset default",
       "dependsOn": "AirSpeaker: Yapılandır",
-      "group": { "kind": "build", "isDefault": true },
-      "problemMatcher": ["$gcc"]
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      },
+      "problemMatcher": [
+        "$gcc"
+      ]
     },
     {
-      "label": "AirSpeaker: Derle ve Kur (sudo)",
+      "label": "AirSpeaker: Sürücü + broker derle ve kur (sudo)",
       "type": "shell",
       "command": "${workspaceFolder}/scripts/install.sh",
       "dependsOn": "AirSpeaker: Derle",
-      "presentation": { "reveal": "always", "focus": true, "panel": "dedicated" },
+      "presentation": {
+        "reveal": "always",
+        "focus": true,
+        "panel": "dedicated"
+      },
       "problemMatcher": []
+    },
+    {
+      "label": "AirSpeaker: Menü çubuğu uygulaması (debug derle)",
+      "type": "shell",
+      "command": "swift build --product AirSpeaker",
+      "problemMatcher": [
+        "$swiftc"
+      ]
+    },
+    {
+      "label": "AirSpeaker: Menü çubuğu uygulamasını derle",
+      "type": "shell",
+      "command": "${workspaceFolder}/scripts/build-app.sh",
+      "problemMatcher": [
+        "$swiftc"
+      ]
+    },
+    {
+      "label": "AirSpeaker: Menü çubuğu uygulamasını çalıştır",
+      "type": "shell",
+      "command": "open ${workspaceFolder}/build/AirSpeaker.app",
+      "dependsOn": "AirSpeaker: Menü çubuğu uygulamasını derle",
+      "problemMatcher": []
+    },
+    {
+      "label": "AirSpeaker: IPC testi (probe, 10 sn)",
+      "type": "shell",
+      "command": "swift run airspeaker-probe --seconds 10",
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated"
+      },
+      "problemMatcher": [
+        "$swiftc"
+      ]
     },
     {
       "label": "AirSpeaker: Kaldır (sudo)",
       "type": "shell",
       "command": "${workspaceFolder}/scripts/uninstall.sh",
-      "presentation": { "reveal": "always", "focus": true, "panel": "dedicated" },
+      "presentation": {
+        "reveal": "always",
+        "focus": true,
+        "panel": "dedicated"
+      },
       "problemMatcher": []
     },
     {
       "label": "AirSpeaker: coreaudiod'u yeniden başlat (sudo)",
       "type": "shell",
       "command": "${workspaceFolder}/scripts/restart-coreaudio.sh",
-      "presentation": { "reveal": "always", "focus": true, "panel": "dedicated" },
+      "presentation": {
+        "reveal": "always",
+        "focus": true,
+        "panel": "dedicated"
+      },
       "problemMatcher": []
     },
     {
@@ -54,7 +106,10 @@
       "type": "shell",
       "command": "${workspaceFolder}/scripts/logs.sh",
       "isBackground": true,
-      "presentation": { "reveal": "always", "panel": "dedicated" },
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated"
+      },
       "problemMatcher": []
     }
   ]

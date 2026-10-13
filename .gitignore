@@ -7,3 +7,7 @@ compile_commands.json
 .cache/
 .DS_Store
 *.xcuserstate
+
+# Swift Package Manager
+.build/
+.swiftpm/

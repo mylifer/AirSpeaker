@@ -14,27 +14,50 @@ jobs:
       - name: Yapılandır
         run: cmake --preset default -DAIRSPEAKER_WARNINGS_AS_ERRORS=ON
 
-      - name: Derle
+      - name: Derle (sürücü, broker, araçlar)
         run: cmake --build --preset default
+
+      - name: Birim testleri
+        run: ctest --test-dir build --output-on-failure
+
+      - name: Swift paketini derle (uygulama + probe)
+        run: |
+          swift build -c release
+          scripts/build-app.sh release
 
       - name: Paketi incele
         run: |
           set -euxo pipefail
           plutil -lint build/AirSpeaker.driver/Contents/Info.plist
+          plutil -lint Broker/com.mylifer.airspeaker.broker.plist
           lipo -info build/AirSpeaker.driver/Contents/MacOS/AirSpeaker
           nm -gU build/AirSpeaker.driver/Contents/MacOS/AirSpeaker | grep -q '_AirSpeaker_Create'
           codesign --verify --strict --verbose=2 build/AirSpeaker.driver
+          codesign --verify --strict --verbose=2 build/AirSpeaker.app
 
       - name: Kur ve cihaz kaydını doğrula
         run: |
           scripts/install.sh
           build/airspeaker-check --list --wait 30
 
-      - name: coreaudiod günlükleri
+      - name: Uçtan uca IPC testi (sürücü → broker → Swift)
+        run: |
+          set -euxo pipefail
+          build/airspeaker-check --set-default
+          # Varsayılan çıkışa (sanal cihaza) ses çal; probe sesi paylaşımlı bellekten okumalı.
+          ( for i in $(seq 1 12); do afplay /System/Library/Sounds/Glass.aiff; done ) &
+          player=$!
+          "$(swift build -c release --show-bin-path)/airspeaker-probe" --seconds 10 --expect-audio
+          kill "$player" 2>/dev/null || true
+
+      - name: Günlükler
         if: always()
-        run: log show --last 5m --style compact --predicate 'subsystem == "com.mylifer.airspeaker" OR (process == "coreaudiod" AND eventMessage CONTAINS[c] "AirSpeaker")' | tail -n 100 || true
+        run: log show --last 10m --style compact --predicate 'subsystem == "com.mylifer.airspeaker" OR (process == "coreaudiod" AND eventMessage CONTAINS[c] "AirSpeaker")' | tail -n 150 || true
 
       - uses: actions/upload-artifact@v4
         with:
-          name: AirSpeaker.driver
-          path: build/AirSpeaker.driver
+          name: AirSpeaker
+          path: |
+            build/AirSpeaker.driver
+            build/AirSpeaker.app
+            build/airspeaker-broker

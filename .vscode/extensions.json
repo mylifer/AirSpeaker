@@ -2,6 +2,7 @@
   "recommendations": [
     "ms-vscode.cmake-tools",
     "llvm-vs-code-extensions.vscode-clangd",
-    "vadimcn.vscode-lldb"
+    "vadimcn.vscode-lldb",
+    "swiftlang.swift-vscode"
   ]
 }

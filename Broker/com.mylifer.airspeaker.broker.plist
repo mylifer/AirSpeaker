@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>Label</key>
+	<string>com.mylifer.airspeaker.broker</string>
+	<key>ProgramArguments</key>
+	<array>
+		<string>/Library/PrivilegedHelperTools/com.mylifer.airspeaker.broker</string>
+	</array>
+	<!-- launchd, bu servise ilk mesaj geldiğinde broker'ı başlatır. -->
+	<key>MachServices</key>
+	<dict>
+		<key>com.mylifer.airspeaker.broker</key>
+		<true/>
+	</dict>
+	<!-- Broker hiçbir ayrıcalığa ihtiyaç duymaz. -->
+	<key>UserName</key>
+	<string>nobody</string>
+	<key>GroupName</key>
+	<string>nobody</string>
+</dict>
+</plist>

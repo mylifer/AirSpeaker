@@ -13,19 +13,27 @@
 //          ├─ Volume control  çıkış, ana eleman
 //          └─ Mute control    çıkış, ana eleman
 //
-// Aşama 1: Cihaz sisteme kaydolur ve Ses menüsünde seçilebilir. Cihaza çalınan
-//          ses DoIOOperation(WriteMix) içinde alınır ve şimdilik yutulur.
-// Aşama 2: WriteMix'te gelen PCM verisi kilitsiz bir halka tampona yazılacak ve
-//          ayrı bir iş parçacığı tarafından UDP üzerinden yayınlanacak.
+// Ses aktarımı (bkz. Shared/include/AirSpeakerIPC.h):
+//   - Initialize, paylaşımlı bellekte bir halka tampon oluşturur ve bunu XPC ile
+//     airspeaker-broker daemon'una kaydeder. Broker aynı belleği menü çubuğu
+//     uygulamasına iletir.
+//   - DoIOOperation(WriteMix), sistemin karıştırdığı çıkış sesini (ses seviyesi
+//     ve sessiz ayarı uygulanmış olarak) bu tampona yazar. Gerçek zamanlı IO
+//     iş parçacığında IPC çağrısı, kilit veya bellek ayırma yoktur.
 
 #include "AirSpeakerConfig.h"
+#include "AirSpeakerIPC.h"
 
 #include <CoreAudio/AudioServerPlugIn.h>
 #include <dispatch/dispatch.h>
 #include <mach/mach_time.h>
 #include <os/log.h>
+#include <sys/mman.h>
+#include <unistd.h>
+#include <xpc/xpc.h>
 
 #include <algorithm>
+#include <atomic>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
@@ -84,6 +92,20 @@ Float64 gHostTicksPerFrame = 0.0;
 UInt64 gIORunningCount = 0;
 UInt64 gAnchorHostTime = 0;
 UInt64 gNumberTimeStamps = 0;
+
+// Ses seviyesi ve sessiz ayarından türetilen doğrusal kazanç; IO iş parçacığı
+// kilitsiz okur.
+std::atomic<Float32> gOutputGain{1.0f};
+
+// Paylaşımlı halka tampon. Initialize'da bir kez oluşturulur, süreç ömrü
+// boyunca yaşar.
+AirSpeakerRingHeader* gRing = nullptr;
+xpc_object_t gRingShmem = nullptr;
+
+// Broker bağlantısı; yalnızca gIPCQueue üzerinde erişilir.
+dispatch_queue_t gIPCQueue = nullptr;
+xpc_connection_t gBrokerConnection = nullptr;
+bool gBrokerUnavailableLogged = false;
 
 os_log_t Log() {
     static os_log_t log = os_log_create(AIRSPEAKER_LOG_SUBSYSTEM, "driver");
@@ -311,6 +333,105 @@ Float32 DecibelsToScalar(Float32 inDecibels) {
         return 0.0f;
     }
     return std::clamp(std::cbrt(std::pow(10.0f, db / 20.0f)), 0.0f, 1.0f);
+}
+
+// gStateMutex tutulurken çağrılmalıdır.
+void UpdateOutputGainLocked() {
+    const Float32 scalar = gVolumeScalar;
+    gOutputGain.store(gMuted ? 0.0f : scalar * scalar * scalar, std::memory_order_relaxed);
+}
+
+// MARK: - Paylaşımlı halka tampon ve broker bağlantısı
+
+bool SetUpSharedRing(Float64 inSampleRate) {
+    const size_t pageSize = static_cast<size_t>(getpagesize());
+    const size_t size = (airspeaker_ring_region_size() + pageSize - 1) / pageSize * pageSize;
+    // xpc_shmem_create, MAP_ANON | MAP_SHARED ile ayrılmış bellek ister; böylece
+    // diğer süreçler kopya değil aynı sayfaları görür.
+    void* region = mmap(nullptr, size, PROT_READ | PROT_WRITE, MAP_ANON | MAP_SHARED, -1, 0);
+    if (region == MAP_FAILED) {
+        os_log_error(Log(), "Paylaşımlı bellek ayrılamadı (%zu bayt)", size);
+        return false;
+    }
+    AirSpeakerRingHeader* ring = airspeaker_ring_init(region, static_cast<uint32_t>(inSampleRate));
+    xpc_object_t shmem = xpc_shmem_create(region, size);
+    if (shmem == nullptr) {
+        os_log_error(Log(), "xpc_shmem_create başarısız");
+        munmap(region, size);
+        return false;
+    }
+    gRingShmem = shmem;
+    gRing = ring;
+    return true;
+}
+
+void ConnectToBroker();
+
+void ScheduleBrokerReconnect() {
+    dispatch_after_f(dispatch_time(DISPATCH_TIME_NOW, static_cast<int64_t>(5 * NSEC_PER_SEC)), gIPCQueue, nullptr,
+                     [](void*) { ConnectToBroker(); });
+}
+
+// gIPCQueue üzerinde çağrılır.
+void SendDriverHello() {
+    if (gBrokerConnection == nullptr || gRingShmem == nullptr) {
+        return;
+    }
+    xpc_object_t message = xpc_dictionary_create(nullptr, nullptr, 0);
+    xpc_dictionary_set_string(message, AIRSPEAKER_MSG_KEY_TYPE, AIRSPEAKER_MSG_DRIVER_HELLO);
+    xpc_dictionary_set_uint64(message, AIRSPEAKER_MSG_KEY_VERSION, AIRSPEAKER_IPC_PROTOCOL_VERSION);
+    xpc_dictionary_set_value(message, AIRSPEAKER_MSG_KEY_SHMEM, gRingShmem);
+    xpc_connection_send_message_with_reply(gBrokerConnection, message, gIPCQueue, ^(xpc_object_t reply) {
+        if (xpc_get_type(reply) != XPC_TYPE_DICTIONARY) {
+            return;  // Bağlantı hataları olay işleyicisinde ele alınır.
+        }
+        const char* status = xpc_dictionary_get_string(reply, AIRSPEAKER_MSG_KEY_STATUS);
+        if (status != nullptr && std::strcmp(status, "ok") == 0) {
+            gBrokerUnavailableLogged = false;
+            os_log(Log(), "airspeaker-broker'a kaydolundu; ses paylaşımlı bellek üzerinden aktarılıyor");
+        } else {
+            os_log_error(Log(), "airspeaker-broker kaydı reddetti: %{public}s", status != nullptr ? status : "?");
+        }
+    });
+    xpc_release(message);
+}
+
+// gIPCQueue üzerinde çağrılır. Broker kurulu değilse veya ulaşılamıyorsa
+// birkaç saniyede bir yeniden dener.
+void ConnectToBroker() {
+    if (gBrokerConnection != nullptr) {
+        return;
+    }
+    xpc_connection_t connection = xpc_connection_create_mach_service(AIRSPEAKER_BROKER_SERVICE, gIPCQueue,
+                                                                     XPC_CONNECTION_MACH_SERVICE_PRIVILEGED);
+    if (connection == nullptr) {
+        ScheduleBrokerReconnect();
+        return;
+    }
+    xpc_connection_set_event_handler(connection, ^(xpc_object_t event) {
+        if (xpc_get_type(event) != XPC_TYPE_ERROR) {
+            return;  // Broker sürücüye kendiliğinden mesaj göndermez.
+        }
+        if (event == XPC_ERROR_CONNECTION_INTERRUPTED) {
+            // Broker yeniden başladı; bağlantı geçerli, kaydı yenile.
+            os_log(Log(), "airspeaker-broker bağlantısı kesildi; yeniden kaydolunuyor");
+            SendDriverHello();
+        } else if (event == XPC_ERROR_CONNECTION_INVALID) {
+            if (!gBrokerUnavailableLogged) {
+                os_log_error(Log(), "airspeaker-broker'a ulaşılamıyor (kurulu mu?); yeniden denenecek");
+                gBrokerUnavailableLogged = true;
+            }
+            if (gBrokerConnection == connection) {
+                xpc_connection_cancel(gBrokerConnection);
+                xpc_release(gBrokerConnection);
+                gBrokerConnection = nullptr;
+            }
+            ScheduleBrokerReconnect();
+        }
+    });
+    gBrokerConnection = connection;
+    xpc_connection_resume(connection);
+    SendDriverHello();
 }
 
 bool IsKnownObject(AudioObjectID inObjectID) {
@@ -847,6 +968,7 @@ OSStatus Volume_SetPropertyData(const AudioObjectPropertyAddress& inAddress, UIn
                 std::lock_guard<std::mutex> lock(gStateMutex);
                 changed = scalar != gVolumeScalar;
                 gVolumeScalar = scalar;
+                UpdateOutputGainLocked();
             }
             if (changed) {
                 NotifyPropertiesChanged(kObjectID_Volume_Output, {kAudioLevelControlPropertyScalarValue,
@@ -934,6 +1056,7 @@ OSStatus Mute_SetPropertyData(const AudioObjectPropertyAddress& inAddress, UInt3
                 std::lock_guard<std::mutex> lock(gStateMutex);
                 changed = gMuted != (value != 0);
                 gMuted = value != 0;
+                UpdateOutputGainLocked();
             }
             if (changed) {
                 NotifyPropertiesChanged(kObjectID_Mute_Output, {kAudioBooleanControlPropertyValue});
@@ -1056,6 +1179,12 @@ OSStatus AirSpeaker_Initialize(AudioServerPlugInDriverRef inDriver, AudioServerP
 
     os_log(Log(), "AirSpeaker HAL eklentisi yüklendi: \"%{public}s\" (%{public}.0f Hz)", AIRSPEAKER_DEVICE_NAME,
            sampleRate);
+
+    // Ses aktarımı kurulamasa bile cihaz çalışmaya devam eder (ses yutulur).
+    if (SetUpSharedRing(sampleRate)) {
+        gIPCQueue = dispatch_queue_create("com.mylifer.airspeaker.driver.ipc", DISPATCH_QUEUE_SERIAL);
+        dispatch_async_f(gIPCQueue, nullptr, [](void*) { ConnectToBroker(); });
+    }
     return kAudioHardwareNoError;
 }
 
@@ -1101,6 +1230,9 @@ OSStatus AirSpeaker_PerformDeviceConfigurationChange(AudioServerPlugInDriverRef 
         std::lock_guard<std::mutex> ioLock(gIOMutex);
         gSampleRate = newRate;
         gHostTicksPerFrame = gHostClockFrequency / newRate;
+    }
+    if (gRing != nullptr) {
+        airspeaker_ring_set_sample_rate(gRing, static_cast<uint32_t>(newRate));
     }
     os_log(Log(), "Örnekleme hızı değişti: %{public}.0f Hz", newRate);
     return kAudioHardwareNoError;
@@ -1293,24 +1425,18 @@ OSStatus AirSpeaker_BeginIOOperation(AudioServerPlugInDriverRef inDriver, AudioO
 
 OSStatus AirSpeaker_DoIOOperation(AudioServerPlugInDriverRef inDriver, AudioObjectID inDeviceObjectID,
                                   AudioObjectID inStreamObjectID, UInt32, UInt32 inOperationID,
-                                  UInt32 inIOBufferFrameSize, const AudioServerPlugInIOCycleInfo* inIOCycleInfo,
+                                  UInt32 inIOBufferFrameSize, const AudioServerPlugInIOCycleInfo*,
                                   void* ioMainBuffer, void*) {
     if (inDriver != gDriverRef || inDeviceObjectID != kObjectID_Device ||
         inStreamObjectID != kObjectID_Stream_Output) {
         return kAudioHardwareBadObjectError;
     }
-    if (inOperationID == kAudioServerPlugInIOOperationWriteMix) {
-        // ioMainBuffer: inIOBufferFrameSize kare, interleaved Float32 stereo
-        // (kBytesPerFrame bayt/kare). Örnek zamanı:
-        // inIOCycleInfo->mOutputTime.mSampleTime.
-        //
-        // AŞAMA 2: Bu fonksiyon gerçek zamanlı IO iş parçacığında çalışır.
-        // Burada bellek ayırma, kilit bekleme veya ağ çağrısı yapılmamalı;
-        // veri kilitsiz bir halka tampona kopyalanmalı ve UDP gönderimi ayrı
-        // bir iş parçacığında yapılmalıdır.
-        (void)ioMainBuffer;
-        (void)inIOBufferFrameSize;
-        (void)inIOCycleInfo;
+    if (inOperationID == kAudioServerPlugInIOOperationWriteMix && gRing != nullptr && ioMainBuffer != nullptr) {
+        // ioMainBuffer: inIOBufferFrameSize kare, interleaved Float32 stereo.
+        // Bu fonksiyon gerçek zamanlı IO iş parçacığında çalışır: yalnızca
+        // paylaşımlı halka tampona kopyalanır, okuyucu beklenmez.
+        airspeaker_ring_write(gRing, static_cast<const float*>(ioMainBuffer), inIOBufferFrameSize,
+                              gOutputGain.load(std::memory_order_relaxed));
     }
     return kAudioHardwareNoError;
 }
