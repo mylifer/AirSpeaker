@@ -1,0 +1,9 @@
+# CMake derleme çıktıları
+build/
+build-*/
+compile_commands.json
+
+# Editör / sistem
+.cache/
+.DS_Store
+*.xcuserstate

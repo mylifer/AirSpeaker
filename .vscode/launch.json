@@ -1,0 +1,14 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "airspeaker-check (LLDB)",
+      "type": "lldb",
+      "request": "launch",
+      "program": "${workspaceFolder}/build/airspeaker-check",
+      "args": ["--list"],
+      "cwd": "${workspaceFolder}",
+      "preLaunchTask": "AirSpeaker: Derle"
+    }
+  ]
+}

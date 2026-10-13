@@ -1,0 +1,61 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "AirSpeaker: Yapılandır",
+      "type": "shell",
+      "command": "cmake --preset default",
+      "problemMatcher": []
+    },
+    {
+      "label": "AirSpeaker: Derle",
+      "type": "shell",
+      "command": "cmake --build --preset default",
+      "dependsOn": "AirSpeaker: Yapılandır",
+      "group": { "kind": "build", "isDefault": true },
+      "problemMatcher": ["$gcc"]
+    },
+    {
+      "label": "AirSpeaker: Derle ve Kur (sudo)",
+      "type": "shell",
+      "command": "${workspaceFolder}/scripts/install.sh",
+      "dependsOn": "AirSpeaker: Derle",
+      "presentation": { "reveal": "always", "focus": true, "panel": "dedicated" },
+      "problemMatcher": []
+    },
+    {
+      "label": "AirSpeaker: Kaldır (sudo)",
+      "type": "shell",
+      "command": "${workspaceFolder}/scripts/uninstall.sh",
+      "presentation": { "reveal": "always", "focus": true, "panel": "dedicated" },
+      "problemMatcher": []
+    },
+    {
+      "label": "AirSpeaker: coreaudiod'u yeniden başlat (sudo)",
+      "type": "shell",
+      "command": "${workspaceFolder}/scripts/restart-coreaudio.sh",
+      "presentation": { "reveal": "always", "focus": true, "panel": "dedicated" },
+      "problemMatcher": []
+    },
+    {
+      "label": "AirSpeaker: Cihazı doğrula",
+      "type": "shell",
+      "command": "${workspaceFolder}/build/airspeaker-check --list",
+      "problemMatcher": []
+    },
+    {
+      "label": "AirSpeaker: Varsayılan çıkış yap",
+      "type": "shell",
+      "command": "${workspaceFolder}/build/airspeaker-check --set-default",
+      "problemMatcher": []
+    },
+    {
+      "label": "AirSpeaker: Günlükleri izle",
+      "type": "shell",
+      "command": "${workspaceFolder}/scripts/logs.sh",
+      "isBackground": true,
+      "presentation": { "reveal": "always", "panel": "dedicated" },
+      "problemMatcher": []
+    }
+  ]
+}

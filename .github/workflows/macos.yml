@@ -1,0 +1,40 @@
+name: macOS
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build-and-register:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Yapılandır
+        run: cmake --preset default -DAIRSPEAKER_WARNINGS_AS_ERRORS=ON
+
+      - name: Derle
+        run: cmake --build --preset default
+
+      - name: Paketi incele
+        run: |
+          set -euxo pipefail
+          plutil -lint build/AirSpeaker.driver/Contents/Info.plist
+          lipo -info build/AirSpeaker.driver/Contents/MacOS/AirSpeaker
+          nm -gU build/AirSpeaker.driver/Contents/MacOS/AirSpeaker | grep -q '_AirSpeaker_Create'
+          codesign --verify --strict --verbose=2 build/AirSpeaker.driver
+
+      - name: Kur ve cihaz kaydını doğrula
+        run: |
+          scripts/install.sh
+          build/airspeaker-check --list --wait 30
+
+      - name: coreaudiod günlükleri
+        if: always()
+        run: log show --last 5m --style compact --predicate 'subsystem == "com.mylifer.airspeaker" OR (process == "coreaudiod" AND eventMessage CONTAINS[c] "AirSpeaker")' | tail -n 100 || true
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: AirSpeaker.driver
+          path: build/AirSpeaker.driver
