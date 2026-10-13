@@ -9,6 +9,9 @@
 // 2. ÖNEMLİ: "Sonuçları Etkinleştir" (Enable Results) seçeneğini KAPATIN.
 //    Açıkken her satırın sonucu kaydedilir; gerçek zamanlı ses takılır.
 // 3. "Kodumu Çalıştır". Yerel ağ izni sorulursa "İzin Ver" deyin.
+//    Kitap kodu uygulama uzantısı olarak çalıştığından ekranın kararmasını
+//    koddan engelleyemeyiz; uzun dinlemelerde Ayarlar › Ekran ve Parlaklık ›
+//    Otomatik Kilit'i "Hiçbir Zaman" yapın.
 // 4. Ekranda görünen IP adresini Mac'teki AirSpeaker menüsüne girin (port 5000)
 //    ve "Yayını Başlat"a basın.
 //
@@ -18,9 +21,6 @@
 import AVFoundation
 import Network
 import SwiftUI
-#if canImport(UIKit)
-import UIKit
-#endif
 #if canImport(PlaygroundSupport)
 import PlaygroundSupport
 #endif
@@ -746,11 +746,6 @@ struct StatsRow: View {
 let receiver = AirSpeakerReceiver(port: 5000)
 receiver.start()
 let viewModel = ReceiverViewModel(receiver: receiver)
-
-#if canImport(UIKit)
-// Yayın sırasında ekran kararmasın.
-UIApplication.shared.isIdleTimerDisabled = true
-#endif
 
 #if canImport(PlaygroundSupport)
 PlaygroundPage.current.setLiveView(ReceiverView(model: viewModel))
